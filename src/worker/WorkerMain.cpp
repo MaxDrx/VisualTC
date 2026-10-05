@@ -15,6 +15,7 @@
 #include <io.h>
 #else
 #include <sys/resource.h>
+#include <unistd.h>
 #endif
 
 #include "core/PathUtil.h"
@@ -36,19 +37,44 @@ bool readExact(std::uint8_t* dst, std::size_t n) {
     return true;
 }
 
-bool writeMessage(const std::vector<std::uint8_t>& payload) {
+bool writeMessage(std::FILE* out, const std::vector<std::uint8_t>& payload) {
     std::uint8_t header[8];
     const std::uint64_t len = payload.size();
     for (int i = 0; i < 8; ++i) {
         header[i] = static_cast<std::uint8_t>(len >> (8 * i));
     }
-    if (std::fwrite(header, 1, 8, stdout) != 8) {
+    if (std::fwrite(header, 1, 8, out) != 8) {
         return false;
     }
-    if (!payload.empty() && std::fwrite(payload.data(), 1, payload.size(), stdout) != payload.size()) {
+    if (!payload.empty() && std::fwrite(payload.data(), 1, payload.size(), out) != payload.size()) {
         return false;
     }
-    return std::fflush(stdout) == 0;
+    return std::fflush(out) == 0;
+}
+
+// The protocol gets a private duplicate of the stdout pipe and file
+// descriptor 1 is pointed at stderr: anything a third-party library prints
+// on stdout (codec warnings...) can then never corrupt the framed responses.
+std::FILE* takeProtocolChannel() {
+#if defined(_WIN32)
+    const int fd = _dup(_fileno(stdout));
+    if (fd < 0) {
+        return stdout;
+    }
+    _setmode(fd, _O_BINARY);
+    std::fflush(stdout);
+    _dup2(_fileno(stderr), _fileno(stdout));
+    std::FILE* f = _fdopen(fd, "wb");
+#else
+    const int fd = dup(STDOUT_FILENO);
+    if (fd < 0) {
+        return stdout;
+    }
+    std::fflush(stdout);
+    dup2(STDERR_FILENO, STDOUT_FILENO);
+    std::FILE* f = fdopen(fd, "wb");
+#endif
+    return f != nullptr ? f : stdout;
 }
 
 void applyResourceLimits() {
@@ -79,6 +105,8 @@ int main() {
     _setmode(_fileno(stdout), _O_BINARY);
 #endif
     applyResourceLimits();
+    std::FILE* out = takeProtocolChannel();
+    vtc::initializeDicomLibrary();  // silences GDCM's console tracing
 
     for (;;) {
         std::uint8_t header[8];
@@ -133,7 +161,7 @@ int main() {
                            ? vtc::encodeParseResult({vtc::ParseStatus::Malformed, nullptr, failed.error})
                            : vtc::encodeDecodeResult(failed);
         }
-        if (!writeMessage(response)) {
+        if (!writeMessage(out, response)) {
             return 5;
         }
     }

@@ -46,7 +46,9 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y ninja-build libgl1-mesa-dev libxkbcommon-x11-0 libxcb-cursor0 \
             libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libxcb-shape0 \
-            libfuse2 file
+            libfuse2 file locales
+          # Comma-decimal locale for the "DS parsing does not depend on the process locale" test.
+          sudo locale-gen pt_BR.UTF-8
 
       - name: macOS tools
         if: runner.os == 'macOS'
@@ -169,7 +171,8 @@ jobs:
       - name: System packages
         run: |
           sudo apt-get update
-          sudo apt-get install -y ninja-build libgl1-mesa-dev clang-tidy libxkbcommon-x11-0 libxcb-cursor0
+          sudo apt-get install -y ninja-build libgl1-mesa-dev clang-tidy libxkbcommon-x11-0 libxcb-cursor0 locales
+          sudo locale-gen pt_BR.UTF-8
       - uses: jurplel/install-qt-action@v4
         with:
           version: ${{ env.QT_VERSION }}

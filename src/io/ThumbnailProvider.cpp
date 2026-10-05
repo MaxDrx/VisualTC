@@ -49,7 +49,7 @@ void ThumbnailProvider::request(const SeriesPtr& series) {
         build(series, ref);
         return;
     }
-    waiting_[ref.instance->filePath].push_back({series, ref});
+    waiting_[ref.instance->filePath].push_back({series, ref, false});
     provider_->request(ref, FrameProvider::Thumbnail);
 }
 
@@ -70,8 +70,16 @@ void ThumbnailProvider::onInstanceReady(const QString& path) {
     }
     const auto items = std::move(it->second);
     waiting_.erase(it);
-    for (const auto& [series, ref] : items) {
-        build(series, ref);
+    for (const auto& w : items) {
+        // Another file's frames may have pushed this one out of a small
+        // cache before we got here: ask once more instead of storing a
+        // black thumbnail (failed files are reported by the provider).
+        if (!provider_->cached(w.ref) && !w.retried && provider_->errorFor(w.ref.instance->filePath).isEmpty()) {
+            waiting_[w.ref.instance->filePath].push_back({w.series, w.ref, true});
+            provider_->request(w.ref, FrameProvider::Thumbnail);
+            continue;
+        }
+        build(w.series, w.ref);
     }
 }
 

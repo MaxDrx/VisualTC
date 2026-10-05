@@ -133,6 +133,8 @@ public:
     [[nodiscard]] QTransform imageToWidget() const;
     [[nodiscard]] std::optional<Vec3> patientPointAt(const QPointF& widgetPos) const;
     [[nodiscard]] DecodedFramePtr currentFrame() const { return shownFrame_; }
+    // Reason why the current image could not be shown (empty when fine).
+    [[nodiscard]] QString errorText() const { return error_; }
 
 Q_SIGNALS:
     void activated(Viewport* vp);
@@ -224,7 +226,12 @@ private:
     // render cache
     mutable DisplayRenderer renderer_;
     mutable QImage rendered_;
-    mutable const DecodedFrame* renderedFrame_ = nullptr;
+    // Owning reference (not a raw pointer): while it is held, no other frame
+    // can be allocated at the same address and be mistaken for the image
+    // that was rendered (stale pixels shown for another slice).
+    mutable DecodedFramePtr renderedFrame_;
+    mutable const InstanceInfo* renderedInstance_ = nullptr;
+    mutable int renderedIndex_ = -1;
     mutable double renderedCenter_ = 0.0;
     mutable double renderedWidth_ = 0.0;
     mutable bool renderedInvert_ = false;

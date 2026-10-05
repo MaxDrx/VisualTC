@@ -634,6 +634,103 @@ TEST_CASE("JPEG Baseline color decodes to RGB whatever the declared PI", "[io][c
     REQUIRE(std::abs(px(28, 10, 2) - 220) < 20);
 }
 
+TEST_CASE("Compressed colour ignores a wrong Planar Configuration", "[io][color][codec]") {
+    // JPEG, JPEG-LS and JPEG 2000 decoders always return interleaved samples;
+    // some writers nevertheless declare Planar Configuration = 1.
+    TempDir dir;
+    SyntheticImage img;
+    img.rows = 32;
+    img.columns = 32;
+    img.samplesPerPixel = 3;
+    img.photometric = "RGB";
+    img.bitsAllocated = 8;
+    img.bitsStored = 8;
+    img.highBit = 7;
+    img.pixelRepresentation = 0;
+    img.modality = "OT";
+    img.sopClassUid = "1.2.840.10008.5.1.4.1.1.7";
+    img.writePosition = false;
+    img.writeSpacing = false;
+    for (int y = 0; y < 32; ++y) {
+        for (int x = 0; x < 32; ++x) {
+            const bool left = x < 16;
+            img.pixels8.push_back(left ? 220 : 20);
+            img.pixels8.push_back(30);
+            img.pixels8.push_back(left ? 20 : 220);
+        }
+    }
+    const auto encoding = GENERATE(Encoding::JpegLsLossless, Encoding::Jpeg2000Lossless, Encoding::JpegLossless,
+                                   Encoding::JpegBaseline);
+    CAPTURE(static_cast<int>(encoding));
+    const auto file = dir.path() / "planar";
+    REQUIRE(writeDicom(file, img, encoding));
+    REQUIRE(setUS(file, 0x0028, 0x0006, 1));
+    const auto parsed = parseDicomHeader(file);
+    REQUIRE(parsed.status == ParseStatus::Ok);
+    REQUIRE(parsed.instance->planarConfiguration == 1);
+    const auto dec = decodeInstance(*parsed.instance);
+    REQUIRE(dec.ok());
+    const auto& f = *dec.frames[0];
+    auto px = [&f](int x, int y, int c) { return int(f.data[static_cast<size_t>((y * 32 + x) * 3 + c)]); };
+    REQUIRE(std::abs(px(4, 10, 0) - 220) < 20);
+    REQUIRE(std::abs(px(4, 10, 1) - 30) < 20);
+    REQUIRE(std::abs(px(4, 10, 2) - 20) < 20);
+    REQUIRE(std::abs(px(28, 20, 0) - 20) < 20);
+    REQUIRE(std::abs(px(28, 20, 2) - 220) < 20);
+}
+
+TEST_CASE("Nearly orthogonal orientation vectors are orthonormalized", "[io][geometry]") {
+    TempDir dir;
+    auto img = ctSlice(0);
+    // Rounded direction cosines (dot product 0.004): accepted and corrected
+    // so that every geometric computation uses an orthonormal basis.
+    img.rowDir = {1.0, 0.0, 0.0};
+    img.colDir = {0.004, 0.999992, 0.0};
+    REQUIRE(writeDicom(dir.path() / "rounded", img));
+    const auto ok = parseDicomHeader(dir.path() / "rounded");
+    REQUIRE(ok.status == ParseStatus::Ok);
+    const auto& g = ok.instance->frames[0].geometry;
+    REQUIRE(g.hasOrientation);
+    REQUIRE(std::abs(g.rowDir.dot(g.colDir)) < 1e-12);
+    REQUIRE(g.rowDir.norm() == Catch::Approx(1.0));
+    REQUIRE(g.colDir.norm() == Catch::Approx(1.0));
+    REQUIRE(g.colDir.y == Catch::Approx(1.0).margin(1e-9));
+    // Grossly non-orthogonal vectors are not trusted at all.
+    img.colDir = {0.2, 0.98, 0.0};
+    REQUIRE(writeDicom(dir.path() / "skewed", img));
+    const auto bad = parseDicomHeader(dir.path() / "skewed");
+    REQUIRE(bad.status == ParseStatus::Ok);
+    REQUIRE_FALSE(bad.instance->frames[0].geometry.hasOrientation);
+}
+
+TEST_CASE("Implicit VR pixel data that starts like an item tag is not rejected", "[io][security]") {
+    // The first pixels happen to be FE FF 00 E0 (an Item tag) followed by a
+    // huge "length": the structural check must not treat Pixel Data as a
+    // sequence and reject a valid file.
+    TempDir dir;
+    auto img = ctSlice(0);
+    img.pixels[0] = 0xFFFE;
+    img.pixels[1] = 0xE000;
+    img.pixels[2] = 0xFFFF;
+    img.pixels[3] = 0x7FFF;
+    REQUIRE(writeDicom(dir.path() / "itemlike", img, Encoding::ImplicitLittle));
+    const auto parsed = parseDicomHeader(dir.path() / "itemlike");
+    INFO(parsed.message);
+    REQUIRE(parsed.status == ParseStatus::Ok);
+    const auto dec = decodeInstance(*parsed.instance);
+    REQUIRE(dec.ok());
+    REQUIRE(dec.frames[0]->rawAt(std::size_t{0}) == -2.0);
+}
+
+TEST_CASE("Float Pixel Data is reported as unsupported, not as truncated", "[io][reliability]") {
+    TempDir dir;
+    REQUIRE(writeDicom(dir.path() / "float", ctSlice(0)));
+    REQUIRE(convertToFloatPixelData(dir.path() / "float"));
+    const auto parsed = parseDicomHeader(dir.path() / "float");
+    REQUIRE(parsed.status == ParseStatus::Unsupported);
+    REQUIRE(parsed.message.find("ponto flutuante") != std::string::npos);
+}
+
 TEST_CASE("Native YBR_FULL_422 is up-sampled and converted to RGB", "[io][color]") {
     TempDir dir;
     SyntheticImage img;

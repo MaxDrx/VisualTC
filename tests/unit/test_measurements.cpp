@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstring>
 #include <numbers>
+#include <random>
 
 #include "measurements/MeasurementMath.h"
 #include "measurements/RoiStatistics.h"
@@ -121,4 +122,40 @@ TEST_CASE("Color frames give geometry but no statistics", "[roi]") {
     REQUIRE(s.count == 0);
     REQUIRE(std::isnan(s.mean));
     REQUIRE(s.areaMm2 == Catch::Approx(9.0));
+}
+
+TEST_CASE("Freehand ROI pixel membership matches the point-in-polygon rule", "[roi]") {
+    // The scan-line implementation must select exactly the same pixels as the
+    // reference even-odd test, including concave and self-crossing outlines.
+    const DecodedFrame f = rampFrame(64, 48);
+    std::mt19937 gen(5);
+    std::uniform_real_distribution<double> coord(-8.0, 70.0);
+    for (int trial = 0; trial < 200; ++trial) {
+        std::vector<Point2> pts;
+        const int n = 3 + static_cast<int>(gen() % 12);
+        for (int i = 0; i < n; ++i) {
+            pts.push_back({coord(gen), coord(gen) * 0.7});
+        }
+        if (trial % 7 == 0) {
+            pts.push_back({std::floor(pts[0].x), std::floor(pts[0].y)});  // vertices on pixel centres
+        }
+        std::vector<double> values;
+        const auto s = polygonStats(f, pts, 1.0, 1.0, &values);
+        std::size_t expected = 0;
+        double sum = 0.0;
+        for (int y = 0; y < f.height; ++y) {
+            for (int x = 0; x < f.width; ++x) {
+                if (pointInPolygon(pts, {static_cast<double>(x), static_cast<double>(y)})) {
+                    ++expected;
+                    sum += f.valueAt(x, y);
+                }
+            }
+        }
+        CAPTURE(trial, n);
+        REQUIRE(s.count == expected);
+        REQUIRE(values.size() == expected);
+        if (expected > 0) {
+            REQUIRE(s.mean == Catch::Approx(sum / static_cast<double>(expected)));
+        }
+    }
 }

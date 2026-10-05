@@ -79,7 +79,12 @@ build/linux-release/tests/visualtc_tests --list-tags
   protocolo do worker, sincronização.
 - `visualtc_ui_tests` (QtTest, `QT_QPA_PLATFORM=offscreen`): janela real,
   arrasto de W/L, roda/teclado, régua em mm, ROI em HU, sincronização,
-  crosshair do MPR e recuperação de queda do worker.
+  crosshair do MPR, recuperação de queda do worker, arquivo com falha sem
+  laço de decodificação, multiframe maior que o cache e, na janela
+  principal, atalhos sem duplicidade e preset de TC pela tecla 1.
+- O teste `DS parsing does not depend on the process locale` precisa de uma
+  localidade com vírgula decimal instalada (`sudo locale-gen pt_BR.UTF-8` no
+  Ubuntu); sem ela, é marcado como ignorado.
 - Fuzzing opcional dos codecs (oculto por padrão; rode sob ASan):
 
   ```bash

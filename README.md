@@ -38,7 +38,7 @@ cropping, CPR) estão em [docs/STATUS.md](docs/STATUS.md).
 
 | Sistema | Pacote | Situação |
 |---|---|---|
-| Ubuntu LTS x86_64 | `VisualTC-x86_64.AppImage`, `visualtc_amd64.deb` | compilado e testado (77 testes, inclusive sob ASan/UBSan); pacotes gerados no CI |
+| Ubuntu LTS x86_64 | `VisualTC-x86_64.AppImage`, `visualtc_amd64.deb` | compilado e testado (84 testes, inclusive sob ASan/UBSan); pacotes gerados no CI |
 | Windows 10/11 x64 | `VisualTC-Setup-x64.exe` (Inno Setup) | configurado no CI (GitHub Actions), ainda não executado |
 | macOS 12+ Apple Silicon (M1–M4) | `VisualTC.dmg` | configurado no CI, ainda não executado |
 | macOS 12+ Intel | `VisualTC.dmg` | configurado no CI, ainda não executado |
@@ -66,7 +66,7 @@ sintético (TC tórax/abdome com topograma, TC crânio em JPEG 2000, RM em RLE,
 US cine calibrado e RX MONOCHROME1):
 
 ```bash
-./build/linux-release/tests/make_phantom ~/exame-simulado
+./build/linux-release/tests/make_phantom ~/exame-simulado   # --enhanced: inclui um TC Enhanced multiframe
 ./build/linux-release/bin/VisualTC ~/exame-simulado
 ```
 

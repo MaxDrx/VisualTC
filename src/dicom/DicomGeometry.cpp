@@ -13,7 +13,7 @@ std::string describe(GeometryIssue issue) {
         case GeometryIssue::MixedOrientation:
             return "As imagens da série não são paralelas entre si.";
         case GeometryIssue::MixedSize:
-            return "As imagens da série possuem dimensões diferentes.";
+            return "As imagens da série possuem dimensões ou espaçamento de pixel diferentes.";
         case GeometryIssue::MixedFrameOfReference:
             return "As imagens pertencem a sistemas de coordenadas (Frame of Reference) diferentes.";
         case GeometryIssue::DuplicatePositions:
@@ -37,6 +37,17 @@ bool StackGeometry::has(GeometryIssue i) const { return std::find(issues.begin()
 
 bool sameOrientation(const FrameGeometry& a, const FrameGeometry& b, double cosTolerance) {
     return a.rowDir.dot(b.rowDir) > cosTolerance && a.colDir.dot(b.colDir) > cosTolerance;
+}
+
+bool sameSpacing(const FrameGeometry& a, const FrameGeometry& b) {
+    if (a.spacingSource != b.spacingSource) {
+        return false;
+    }
+    if (!a.hasSpacing()) {
+        return true;
+    }
+    auto close = [](double x, double y) { return std::abs(x - y) <= 1e-3 * std::max(std::abs(x), std::abs(y)); };
+    return close(a.spacingX, b.spacingX) && close(a.spacingY, b.spacingY);
 }
 
 bool intersectSegmentWithPlane(const Vec3& a, const Vec3& b, const Vec3& planePoint, const Vec3& planeNormal,
@@ -102,7 +113,7 @@ StackGeometry analyzeStack(const std::vector<FrameRef>& frames) {
         if (!fg.isSpatial()) {
             g.spatial = false;
         }
-        if (fr.instance->rows != g.rows || fr.instance->columns != g.columns) {
+        if (fr.instance->rows != g.rows || fr.instance->columns != g.columns || !sameSpacing(fg, f0)) {
             g.parallel = false;
             addIssue(g, GeometryIssue::MixedSize);
         }

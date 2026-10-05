@@ -93,6 +93,9 @@ void ViewerGrid::relayout() {
     const bool multi = maximized_ == nullptr && rows_ * cols_ > 1;
     for (auto* vp : viewports_) {
         vp->setShowActiveFrame(multi);
+        if (vp->isHidden() && vp->cinePlaying()) {
+            vp->setCinePlaying(false);  // no invisible playback decoding in the background
+        }
     }
     const auto visible = visibleViewports();
     if (std::find(visible.begin(), visible.end(), active_) == visible.end()) {

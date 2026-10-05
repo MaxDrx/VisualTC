@@ -122,12 +122,9 @@ SeriesBrowser::SeriesBrowser(QWidget* parent) : QTreeWidget(parent) {
     setMouseTracking(true);
     setUniformRowHeights(false);
     setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
-    connect(this, &QTreeWidget::itemDoubleClicked, this, [this](QTreeWidgetItem* item) {
-        const QString id = item->data(0, SeriesIdRole).toString();
-        if (!id.isEmpty()) {
-            Q_EMIT seriesActivated(id);
-        }
-    });
+    // itemActivated covers double click (or single click, when that is the
+    // platform convention) and Enter; also listening to itemDoubleClicked
+    // would open the series twice.
     connect(this, &QTreeWidget::itemActivated, this, [this](QTreeWidgetItem* item) {
         const QString id = item->data(0, SeriesIdRole).toString();
         if (!id.isEmpty()) {

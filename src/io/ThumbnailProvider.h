@@ -41,7 +41,12 @@ private:
 
     FrameProvider* provider_;
     int size_;
-    std::map<std::string, std::vector<std::pair<SeriesPtr, FrameRef>>> waiting_;
+    struct Waiting {
+        SeriesPtr series;
+        FrameRef ref;
+        bool retried = false;  // the frame was evicted once before we could use it
+    };
+    std::map<std::string, std::vector<Waiting>> waiting_;
     std::map<std::string, QImage> thumbs_;
 };
 

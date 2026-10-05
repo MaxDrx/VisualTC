@@ -21,7 +21,8 @@ public:
 
     void setLevel(LogLevel level);
     [[nodiscard]] LogLevel level() const;
-    // Opens (append) the log file. Rotates when it exceeds maxBytes.
+    // Opens (append) the log file. Rotates (one ".1" backup) when it
+    // exceeds maxBytes, at start-up and while running.
     bool openFile(const std::filesystem::path& file, std::uintmax_t maxBytes = 5u * 1024u * 1024u);
     void setEchoToStderr(bool echo);
     [[nodiscard]] std::filesystem::path filePath() const;
@@ -30,7 +31,11 @@ public:
 
 private:
     Logger() = default;
+    void rotateLocked();
+
     mutable std::mutex mutex_;
+    std::uintmax_t maxBytes_ = 5u * 1024u * 1024u;
+    std::uintmax_t written_ = 0;
     LogLevel level_ = LogLevel::Info;
     std::ofstream file_;
     std::filesystem::path path_;

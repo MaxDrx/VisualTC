@@ -1,15 +1,20 @@
 // Integration tests of the Qt layer, run headless (QT_QPA_PLATFORM=offscreen).
+#include <QAction>
+#include <QMenu>
 #include <QSignalSpy>
+#include <QStandardPaths>
 #include <QTemporaryDir>
 #include <QtTest>
 #include <cmath>
 
 #include "core/PathUtil.h"
+#include "dicom/DicomParser.h"
 #include "dicom/DicomStudy.h"
 #include "fixtures/DicomFixtures.h"
 #include "io/DecoderClient.h"
 #include "io/FrameProvider.h"
 #include "io/ImportTask.h"
+#include "ui/MainWindow.h"
 #include "measurements/MeasurementMath.h"
 #include "mpr/ImageVolume.h"
 #include "mpr/MprSession.h"
@@ -294,6 +299,135 @@ private Q_SLOTS:
         QVERIFY(!broken.ok());
         QVERIFY(!broken.error.empty());
         DecoderClient::releaseThreadWorker();
+    }
+
+    void failedDecodeIsNotRetriedInALoop() {
+        // A file that was readable at scan time but fails to decode (here it
+        // is truncated afterwards) must be decoded once and then reported,
+        // not re-requested on every repaint.
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        std::vector<InstancePtr> insts;
+        const std::string seriesUid = makeUid("broken");
+        for (int k = 0; k < 3; ++k) {
+            SyntheticImage img;
+            img.rows = img.columns = 32;
+            img.position = {0.0, 0.0, k * 2.0};
+            img.instanceNumber = k + 1;
+            img.seriesInstanceUid = seriesUid;
+            img.pixels.assign(32 * 32, 1024);
+            const auto path = utf8ToPath((dir.path() + "/S" + QString::number(k)).toStdString());
+            QVERIFY(writeDicom(path, img));
+            const auto parsed = parseDicomHeader(path);
+            QVERIFY(parsed.status == ParseStatus::Ok);
+            insts.push_back(parsed.instance);
+        }
+        StudyDatabase db;
+        db.addInstances(insts);
+        const SeriesPtr series = db.allSeries().front();
+        {
+            QFile f(QString::fromStdString(series->frames.front().instance->filePath));
+            QVERIFY(f.open(QIODevice::ReadWrite));
+            QVERIFY(f.resize(f.size() / 2));
+        }
+        FrameProvider provider(64ull << 20, 2);
+        Viewport vp(store_);
+        vp.resize(300, 300);
+        vp.show();
+        vp.setSource(std::make_shared<StackSource>(series, &provider, false));
+        QTRY_VERIFY_WITH_TIMEOUT(!vp.errorText().isEmpty(), 20000);
+        const int afterError = provider.decodeCount();
+        QTest::qWait(800);
+        QCoreApplication::processEvents();
+        QCOMPARE(provider.decodeCount(), afterError);
+        QVERIFY(afterError <= 3);  // the broken slice plus at most its two neighbours
+        provider.shutdown();
+    }
+
+    void multiFrameLargerThanCacheDoesNotThrash() {
+        // Enhanced CT whose decoded frames exceed the cache budget: showing a
+        // frame must decode the file once, and nearby frames must stay cached.
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        EnhancedSpec spec;
+        spec.rows = spec.columns = 128;
+        for (int k = 0; k < 48; ++k) {
+            spec.origins.push_back({0.0, 0.0, k * 1.0});
+            spec.hu.emplace_back(128 * 128, static_cast<std::int16_t>(k));
+        }
+        const auto path = utf8ToPath((dir.path() + "/enhanced").toStdString());
+        QVERIFY(writeEnhancedCt(path, spec));
+        const auto parsed = parseDicomHeader(path);
+        QVERIFY(parsed.status == ParseStatus::Ok);
+        StudyDatabase db;
+        db.addInstances({parsed.instance});
+        const SeriesPtr series = db.allSeries().front();
+        QCOMPARE(series->frameCount(), 48);
+        // 48 frames x 32 KiB = 1.5 MiB of pixels; the cache holds about a third.
+        FrameProvider provider(512ull << 10, 2);
+        Viewport vp(store_);
+        vp.resize(300, 300);
+        vp.show();
+        vp.setSource(std::make_shared<StackSource>(series, &provider, false));
+        vp.setSliceIndex(30);
+        QTRY_VERIFY_WITH_TIMEOUT(vp.currentFrame() != nullptr && vp.sliceIndex() == 30, 20000);
+        // HU of frame k is k and frame k lies at z = k mm.
+        QCOMPARE(vp.currentFrame()->valueAt(5, 5), series->frames[30].geometry().position.z);
+        QTest::qWait(500);
+        QCoreApplication::processEvents();
+        QVERIFY2(provider.decodeCount() <= 2, qPrintable(QString::number(provider.decodeCount())));
+        const int before = provider.decodeCount();
+        vp.scrollBy(1);
+        vp.scrollBy(-2);
+        QVERIFY(vp.currentFrame() != nullptr);
+        QCOMPARE(provider.decodeCount(), before);  // neighbours came from the cache
+        provider.shutdown();
+    }
+
+    void mainWindowShortcutsAreUniqueAndPresetsWork() {
+        QStandardPaths::setTestModeEnabled(true);
+        auto* window = new MainWindow;
+        window->resize(1200, 800);
+        window->show();
+        window->importPaths({tmp_.path()});
+        Viewport* active = nullptr;
+        QTRY_VERIFY_WITH_TIMEOUT(
+            [&] {
+                for (auto* vp : window->findChildren<Viewport*>()) {
+                    if (vp->isVisible() && vp->currentFrame()) {
+                        active = vp;
+                        return true;
+                    }
+                }
+                return false;
+            }(),
+            30000);
+        QCoreApplication::processEvents();
+        // The presets menu is (re)built when opened: simulate that first, as
+        // a user who looked at the menu once.
+        for (auto* menu : window->findChildren<QMenu*>()) {
+            if (menu->title() == QStringLiteral("Presets de janela")) {
+                Q_EMIT menu->aboutToShow();
+            }
+        }
+        // Every key sequence must belong to exactly one action in the window.
+        std::map<QString, QStringList> owners;
+        for (auto* a : window->findChildren<QAction*>()) {
+            for (const auto& ks : a->shortcuts()) {
+                if (!ks.isEmpty() && a->shortcutContext() != Qt::WidgetShortcut) {
+                    owners[ks.toString()] << a->text();
+                }
+            }
+        }
+        for (const auto& [key, names] : owners) {
+            QVERIFY2(names.size() == 1, qPrintable(key + ": " + names.join(" | ")));
+        }
+        // Key "1" applies the lung window (CT preset 1).
+        active->setFocus();
+        QTest::keyClick(window, Qt::Key_1);
+        QTRY_COMPARE(active->windowCenter(), -600.0);
+        QCOMPARE(active->windowWidth(), 1500.0);
+        delete window;
     }
 
     void cleanupTestCase() {

@@ -99,10 +99,14 @@ ScanResult DicomScanner::scan(const std::vector<std::filesystem::path>& inputs, 
                 switch (r.status) {
                     case ParseStatus::Ok:
                         if (r.instance->pixelDataTruncated) {
+                            // Never shown: it could not be decoded, and as a
+                            // missing slice it is reported by the geometry
+                            // analysis instead of breaking the MPR volume.
                             result.issues.push_back({ParseStatus::Malformed, pathToUtf8(files[i]),
                                                      "Arquivo truncado: os dados de pixel estão incompletos."});
+                        } else {
+                            result.instances.push_back(std::move(r.instance));
                         }
-                        result.instances.push_back(std::move(r.instance));
                         break;
                     case ParseStatus::NotDicom:
                         ++result.nonDicomFiles;

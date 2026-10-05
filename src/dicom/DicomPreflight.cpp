@@ -41,6 +41,22 @@ bool isLongVr(const char* vr) {
     return false;
 }
 
+// Attributes that are never sequences and hold arbitrary bytes.
+bool isBinaryData(std::uint16_t group, std::uint16_t element) {
+    if (group == 0x7FE0) {
+        return true;  // (Float/Double Float) Pixel Data
+    }
+    if (group >= 0x6000 && group <= 0x60FF && (group % 2) == 0 && element == 0x3000) {
+        return true;  // Overlay Data
+    }
+    if (group == 0x0028) {
+        // Palette / segmented palette / VOI / modality LUT data
+        return (element >= 0x1201 && element <= 0x1204) || (element >= 0x1221 && element <= 0x1223) ||
+               element == 0x3006 || element == 0x1101 || element == 0x1102 || element == 0x1103;
+    }
+    return group == 0x5400 && element == 0x1010;  // Waveform Data
+}
+
 class Walker {
 public:
     Walker(std::ifstream& in, std::uint64_t size) : in_(in), size_(size) {}
@@ -203,7 +219,10 @@ public:
                 return corrupt("comprimento de elemento maior que o arquivo");
             }
             const std::uint64_t valueEnd = pos_ + len;
-            if (sq || (!explicitVr && len >= 8 && peekItemTag(be))) {
+            // Implicit VR has no VR field: a value that starts with an Item
+            // tag is probably a sequence. Never apply that guess to binary
+            // data whose first bytes are arbitrary (pixels, overlays, LUTs).
+            if (sq || (!explicitVr && len >= 8 && !isBinaryData(group, element) && peekItemTag(be))) {
                 const Walk w = sequenceDefined(valueEnd, explicitVr, be, depth + 1);
                 if (w == Walk::Corrupt) {
                     return w;

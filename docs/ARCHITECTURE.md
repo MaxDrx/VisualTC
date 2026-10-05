@@ -64,7 +64,12 @@ O VisualTC é dividido em três camadas com dependências em um único sentido:
    por prioridade (Visível 10 > Prefetch 5 > Miniatura 2 > Fundo 0); cada
    thread fala com seu próprio worker. Os quadros decodificados vão para o
    **FrameCache** LRU com orçamento em bytes (padrão 25 % da RAM, entre
-   256 MiB e 2 GiB).
+   256 MiB e 2 GiB). Os quadros de um arquivo multiframe entram no cache do
+   mais distante ao mais próximo do quadro pedido, para que um arquivo maior
+   que o cache mantenha a vizinhança do quadro na tela; o resultado é
+   conferido com o cabeçalho (dimensões, número do quadro) e um arquivo que
+   falha não é decodificado de novo automaticamente (nova tentativa só ao
+   voltar ao corte, após 10 s).
 7. O **Viewport** aplica rescale → VOI → (inversão) via LUT de 8 bits
    pré-calculada (`DisplayRenderer`) e desenha com `QPainter`.
 

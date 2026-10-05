@@ -281,6 +281,66 @@ bool setPhotometric(const std::filesystem::path& file, const std::string& photom
     return !ec;
 }
 
+bool setUS(const std::filesystem::path& file, std::uint16_t group, std::uint16_t element, std::uint16_t value) {
+    gdcm::Reader r;
+    r.SetFileName(file.string().c_str());
+    if (!r.Read()) {
+        return false;
+    }
+    putUS(r.GetFile().GetDataSet(), group, element, value);
+    gdcm::Writer w;
+    w.SetFile(r.GetFile());
+    const auto tmp = file.string() + ".us.tmp";
+    w.SetFileName(tmp.c_str());
+    if (!w.Write()) {
+        return false;
+    }
+    std::error_code ec;
+    std::filesystem::rename(tmp, file, ec);
+    return !ec;
+}
+
+bool convertToFloatPixelData(const std::filesystem::path& file) {
+    gdcm::Reader r;
+    r.SetFileName(file.string().c_str());
+    if (!r.Read()) {
+        return false;
+    }
+    gdcm::DataSet& d = r.GetFile().GetDataSet();
+    const gdcm::Tag pixelTag(0x7fe0, 0x0010);
+    if (!d.FindDataElement(pixelTag)) {
+        return false;
+    }
+    const gdcm::ByteValue* bv = d.GetDataElement(pixelTag).GetByteValue();
+    if (bv == nullptr) {
+        return false;
+    }
+    std::vector<float> values(bv->GetLength() / 2);
+    for (std::size_t i = 0; i < values.size(); ++i) {
+        std::int16_t v = 0;
+        std::memcpy(&v, bv->GetPointer() + 2 * i, 2);
+        values[i] = static_cast<float>(v);
+    }
+    d.Remove(pixelTag);
+    gdcm::DataElement fl(gdcm::Tag(0x7fe0, 0x0008));
+    fl.SetVR(gdcm::VR::OF);
+    fl.SetByteValue(reinterpret_cast<const char*>(values.data()), static_cast<std::uint32_t>(values.size() * 4));
+    d.Replace(fl);
+    putUS(d, 0x0028, 0x0100, 32);
+    putUS(d, 0x0028, 0x0101, 32);
+    putUS(d, 0x0028, 0x0102, 31);
+    gdcm::Writer w;
+    w.SetFile(r.GetFile());
+    const auto tmp = file.string() + ".float.tmp";
+    w.SetFileName(tmp.c_str());
+    if (!w.Write()) {
+        return false;
+    }
+    std::error_code ec;
+    std::filesystem::rename(tmp, file, ec);
+    return !ec;
+}
+
 bool stripPart10Header(const std::filesystem::path& in, const std::filesystem::path& out) {
     std::ifstream f(in, std::ios::binary);
     std::vector<char> bytes((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());

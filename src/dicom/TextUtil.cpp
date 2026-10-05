@@ -4,6 +4,8 @@
 #include <charconv>
 #include <cmath>
 #include <cstdlib>
+#include <locale>
+#include <sstream>
 
 namespace vtc {
 
@@ -127,17 +129,32 @@ std::optional<double> parseDouble(std::string_view s) {
     if (t.empty()) {
         return std::nullopt;
     }
-    // std::from_chars for double is not available on every toolchain we
-    // target (Apple Clang < 16), so use strtod on a NUL-terminated copy.
-    char* end = nullptr;
-    const double v = std::strtod(t.c_str(), &end);
-    if (end == t.c_str() || !std::isfinite(v)) {
+    // DICOM DS always uses '.' as decimal separator. strtod/atof follow the
+    // process locale (Qt calls setlocale(LC_ALL, "") at start-up, so on a
+    // pt_BR desktop they expect a comma): parse locale-independently.
+    std::string_view body = t;
+    if (body.front() == '+') {
+        body.remove_prefix(1);  // from_chars does not accept a leading '+'
+        if (body.empty() || body.front() == '-' || body.front() == '+') {
+            return std::nullopt;
+        }
+    }
+    double v = 0.0;
+#if defined(__cpp_lib_to_chars) && __cpp_lib_to_chars >= 201611L
+    const auto res = std::from_chars(body.data(), body.data() + body.size(), v, std::chars_format::general);
+    if (res.ec != std::errc{} || res.ptr != body.data() + body.size()) {
         return std::nullopt;
     }
-    while (*end == ' ') {
-        ++end;
+#else
+    // Toolchains without floating-point from_chars (older Apple libc++).
+    std::istringstream in{std::string(body)};
+    in.imbue(std::locale::classic());
+    in >> std::noskipws >> v;
+    if (in.fail() || in.peek() != std::char_traits<char>::eof()) {
+        return std::nullopt;
     }
-    if (*end != '\0') {
+#endif
+    if (!std::isfinite(v)) {
         return std::nullopt;
     }
     return v;

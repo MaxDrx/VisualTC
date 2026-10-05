@@ -24,6 +24,7 @@ struct SliceSpec {
     bool spatial = true;
     int frames = 1;
     std::string series = "1.2.3.4";
+    double spacing = 0.7;
 };
 
 std::shared_ptr<InstanceInfo> makeInstance(const SliceSpec& s, int uniq) {
@@ -54,8 +55,8 @@ std::shared_ptr<InstanceInfo> makeInstance(const SliceSpec& s, int uniq) {
             fi.geometry.rowDir = s.row;
             fi.geometry.colDir = s.col;
             fi.geometry.spacingSource = SpacingSource::PixelSpacing;
-            fi.geometry.spacingX = 0.7;
-            fi.geometry.spacingY = 0.7;
+            fi.geometry.spacingX = s.spacing;
+            fi.geometry.spacingY = s.spacing;
         }
         fi.keys.echoNumber = s.echo;
         inst->frames.push_back(fi);
@@ -236,6 +237,35 @@ TEST_CASE("Series mixing two real stacks is split by orientation", "[sort]") {
     REQUIRE(stacks.size() == 2);
     REQUIRE(stacks[0].label == "Axial");
     REQUIRE(stacks[1].label == "Coronal");
+}
+
+TEST_CASE("Stacks with different pixel spacing are never merged", "[sort]") {
+    // Same series, orientation and matrix, but two reconstructions with
+    // different fields of view (0.7 mm and 0.5 mm pixels) interleaved in z.
+    std::vector<std::shared_ptr<InstanceInfo>> insts;
+    for (int i = 0; i < 10; ++i) {
+        SliceSpec a{{0, 0, i * 5.0}, {1, 0, 0}, {0, 1, 0}, i + 1};
+        a.spacing = 0.7;
+        SliceSpec b{{0, 0, i * 5.0 + 2.5}, {1, 0, 0}, {0, 1, 0}, 100 + i};
+        b.spacing = 0.5;
+        insts.push_back(makeInstance(a, i));
+        insts.push_back(makeInstance(b, 100 + i));
+    }
+    const auto stacks = buildStacks(refs(insts));
+    REQUIRE(stacks.size() == 2);
+    for (const auto& st : stacks) {
+        REQUIRE(st.frames.size() == 10);
+        const double sx = st.frames.front().geometry().spacingX;
+        for (const auto& f : st.frames) {
+            REQUIRE(f.geometry().spacingX == sx);
+        }
+        const auto g = analyzeStack(st.frames);
+        REQUIRE(g.volumetric);
+        REQUIRE(g.sliceSpacing == Catch::Approx(5.0));
+    }
+    // analyzeStack itself refuses a stack whose pixel spacing varies.
+    const auto mixed = analyzeStack(refs(insts));
+    REQUIRE_FALSE(mixed.volumetric);
 }
 
 TEST_CASE("Ultrasound cine clips become separate stacks", "[sort]") {

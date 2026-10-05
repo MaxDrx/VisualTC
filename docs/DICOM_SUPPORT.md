@@ -19,7 +19,7 @@ originais.
 | DICOMDIR | ignorado como índice; as imagens são encontradas pela varredura da pasta |
 | Arquivos não DICOM na pasta | ignorados silenciosamente |
 | Objetos sem pixels (SR, PR, KO, RT Plan, PDF encapsulado…) | listados no relatório de importação como "Objeto DICOM sem imagem" |
-| Arquivo truncado (pixels incompletos) | rejeitado com "Arquivo truncado" — **testado** |
+| Arquivo truncado (pixels incompletos) | relatado como "Arquivo truncado" e não incluído na série (aparece como corte ausente) — **testado** |
 | Estrutura corrompida (comprimentos impossíveis, VR inválida, fragmentos corrompidos, cabeçalho RLE inválido) | rejeitado pelo preflight antes de qualquer alocação — **testado** (fuzzing) |
 | Mesmo SOP Instance UID em dois arquivos | contado uma única vez — **testado** |
 | Caminhos com acentos/Unicode | suportados nos 3 SOs (leitura por `std::filesystem::path`) — **testado** |
@@ -59,7 +59,7 @@ Imagens com compressão com perdas (pela Transfer Syntax ou por
 
 | Atributo | Suporte |
 |---|---|
-| Bits Allocated | 1, 8, 16, 32 (inteiros) — 1 bit é desempacotado; float/double ainda não |
+| Bits Allocated | 1, 8, 16, 32 (inteiros) — 1 bit é desempacotado; Float/Double Float Pixel Data (mapas paramétricos) ainda não: o arquivo é relatado como "ponto flutuante não suportado" |
 | Bits Stored / High Bit | bits fora da faixa armazenada são mascarados e o sinal é estendido corretamente (ex.: 12 bits com "lixo" nos bits altos) — **testado** |
 | Pixel Representation | sem sinal e complemento de dois — **testado** |
 | Samples per Pixel | 1 e 3 |
@@ -106,12 +106,18 @@ Imagens com compressão com perdas (pela Transfer Syntax ou por
 | `PixelSpacing (0028,0030)` | medidas em mm — `[0]` = entre linhas, `[1]` = entre colunas (espaçamento anisotrópico respeitado) |
 | `ImagerPixelSpacing (0018,1164)` (RX/MG sem PixelSpacing) | mm no plano do detector, com aviso **CALIBRAÇÃO NO DETECTOR** |
 | Pixel Measures (Enhanced, functional groups) | por quadro |
-| `SequenceOfUltrasoundRegions` (US) | mm a partir de `PhysicalDeltaX/Y` em cm, quando as unidades são cm |
+| `SequenceOfUltrasoundRegions` (US) | mm a partir de `PhysicalDeltaX/Y` em cm, da primeira região 2D (`RegionSpatialFormat` = 1) com unidades em cm; regiões de M-mode, Doppler espectral e traçados são ignoradas |
 | nenhuma das anteriores | medidas em **pixels**, aviso **SEM CALIBRAÇÃO**; nenhum valor em mm é inventado — **testado** |
 
 - `ImagePositionPatient`, `ImageOrientationPatient`, `FrameOfReferenceUID`
   (inclusive Plane Position/Orientation por quadro em Enhanced) definem a
-  posição 3D de cada pixel.
+  posição 3D de cada pixel. Vetores de orientação arredondados (desvio de
+  ortogonalidade < 0,01, ~0,6°) são ortonormalizados mantendo a direção das
+  linhas; vetores mais distorcidos não são usados (sem orientação, sem MPR).
+- Valores decimais (DS) são lidos sempre com ponto decimal, independentemente
+  do idioma/localidade do sistema operacional.
+- Cortes de uma mesma série com espaçamento de pixel diferente (outro FOV)
+  formam pilhas separadas e nunca são intercalados num volume.
 - Letras de orientação (R/L, A/P, H/F) calculadas dos vetores de orientação,
   com até três componentes em planos oblíquos (ex.: "RA", "HPL"); sem
   orientação, nenhuma letra é exibida.

@@ -7,6 +7,7 @@
 #include <memory>
 #include <thread>
 
+#include "dicom/DicomScanner.h"
 #include "dicom/DicomStudy.h"
 #include "imaging/WindowLevel.h"
 #include "viewer2d/Viewport.h"
@@ -141,6 +142,12 @@ private:
     std::thread mprThread_;
     std::atomic<bool> mprCancel_{false};
     bool mprBuilding_ = false;
+
+    // Import bookkeeping: problems of every import of this session, and a
+    // flag to drop the result of an import interrupted by "Fechar estudos".
+    std::vector<ScanIssue> importIssues_;
+    bool discardImport_ = false;
+    QAction* issuesAction_ = nullptr;
 
     AutomationOptions automation_;
     int automationStage_ = 0;

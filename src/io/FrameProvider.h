@@ -5,9 +5,11 @@
 #include <QString>
 #include <QThreadPool>
 #include <atomic>
+#include <cstdint>
 #include <map>
 #include <set>
 #include <string>
+#include <vector>
 
 #include "dicom/DicomDecoder.h"
 #include "dicom/DicomTypes.h"
@@ -40,11 +42,16 @@ public:
     QString errorFor(const std::string& filePath) const;
     // Blocking decode for worker threads (volume building). Uses the cache.
     DecodedFramePtr decodeNow(const FrameRef& ref, QString* error = nullptr);
+    // Blocking decode of every frame of the instance containing `ref`
+    // (multi-frame volumes: one decode instead of one per frame).
+    std::vector<DecodedFramePtr> decodeAllNow(const FrameRef& ref, QString* error = nullptr);
 
     void setCacheBudget(std::uint64_t bytes);
     [[nodiscard]] std::uint64_t cacheUsed() const { return cache_.usedBytes(); }
     [[nodiscard]] std::uint64_t cacheBudget() const { return cache_.budget(); }
     [[nodiscard]] int pendingCount() const;
+    // Number of file decodes performed so far (diagnostics and tests).
+    [[nodiscard]] int decodeCount() const { return decodes_.load(); }
     void clear();
     void shutdown();
 
@@ -54,16 +61,32 @@ Q_SIGNALS:
     void instanceReady(const QString& filePath);
 
 private:
+    struct Pending {
+        int priority = 0;
+        int focusFrame = 0;   // frame the most urgent requester wants
+        InstancePtr instance; // header the decoded frames must match
+    };
+    struct Failure {
+        std::string message;
+        std::int64_t whenMs = 0;
+    };
+
     void runOne();
-    void storeResult(const std::string& path, const DecodeResult& result);
+    // Validates the decoded frames against the header and caches them, the
+    // focus frame last so that the LRU keeps the frames nearest to it.
+    // Returns the error to report (empty when the focus frame is cached).
+    std::string storeResult(const std::string& path, const DecodeResult& result, const InstancePtr& instance,
+                            int focusFrame);
+    void recordError(const std::string& path, const std::string& message);
 
     QThreadPool pool_;
     mutable QMutex mutex_;
-    std::map<std::string, int> pending_;
+    std::map<std::string, Pending> pending_;
     std::set<std::string> inFlight_;
-    std::map<std::string, std::string> errors_;
+    std::map<std::string, Failure> errors_;
     FrameCache cache_;
     std::atomic<bool> stopping_{false};
+    std::atomic<int> decodes_{0};
 };
 
 }  // namespace vtc

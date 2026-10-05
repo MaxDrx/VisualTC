@@ -1,7 +1,7 @@
 // make_phantom: writes a synthetic, fully anonymous DICOM exam folder used for
 // VisualTC demos, manual QA and automated smoke tests.
 //
-//   make_phantom <output-dir> [--small]
+//   make_phantom <output-dir> [--small] [--enhanced]
 //
 // Contents (patient "SIMULADO^JOÃO", no real data):
 //   Study 1 (TC Tórax/Abdome, one Frame of Reference)
@@ -507,15 +507,46 @@ void writeDx(const fs::path& dir) {
     writeDicom(dir / hexName(), img);
 }
 
+// Enhanced CT (one multi-frame file with functional groups) of the same torso:
+// exercises per-frame geometry and multi-frame decoding/caching.
+void writeEnhanced(const fs::path& file, bool small) {
+    EnhancedSpec spec;
+    const int matrix = small ? 128 : 256;
+    const double fov = 360.0;
+    spec.rows = spec.columns = matrix;
+    spec.spacing = fov / matrix;
+    const double x0 = -fov / 2.0 + spec.spacing / 2.0;
+    for (double z = 330.0; z >= (small ? 180.0 : 0.0); z -= 5.0) {
+        spec.origins.push_back({x0, x0, z});
+        std::vector<std::int16_t> hu(static_cast<size_t>(matrix * matrix));
+        for (int j = 0; j < matrix; ++j) {
+            for (int i = 0; i < matrix; ++i) {
+                hu[static_cast<size_t>(j * matrix + i)] = static_cast<std::int16_t>(
+                    std::clamp(std::lround(torsoHU({x0 + i * spec.spacing, x0 + j * spec.spacing, z})), -1024L, 3071L));
+            }
+        }
+        spec.hu.push_back(std::move(hu));
+    }
+    if (!writeEnhancedCt(file, spec)) {
+        std::cerr << "falha ao gravar o Enhanced CT\n";
+    }
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
     if (argc < 2) {
-        std::cerr << "uso: make_phantom <pasta-de-saida> [--small]\n";
+        std::cerr << "uso: make_phantom <pasta-de-saida> [--small] [--enhanced]\n";
         return 1;
     }
     const fs::path out = argv[1];
-    const bool small = argc > 2 && std::string(argv[2]) == "--small";
+    bool small = false;
+    bool enhanced = false;
+    for (int i = 2; i < argc; ++i) {
+        const std::string a = argv[i];
+        small = small || a == "--small";
+        enhanced = enhanced || a == "--enhanced";
+    }
     fs::create_directories(out / "DICOM" / "ST000001" / "SE000001");
     fs::create_directories(out / "DICOM" / "ST000001" / "SE000002");
     fs::create_directories(out / "DICOM" / "ST000001" / "SE000003");
@@ -542,6 +573,11 @@ int main(int argc, char** argv) {
     writeUs(out / "DICOM" / "ST000004");
     std::cout << "RX tórax...\n";
     writeDx(out / "DICOM" / "ST000005");
+    if (enhanced) {
+        std::cout << "TC Enhanced (multiframe)...\n";
+        fs::create_directories(out / "DICOM" / "ST000006");
+        writeEnhanced(out / "DICOM" / "ST000006" / "ENHANCED", small);
+    }
     std::cout << "Concluído: " << out << "\n";
     return 0;
 }

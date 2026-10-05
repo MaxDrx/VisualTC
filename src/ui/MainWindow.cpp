@@ -680,7 +680,13 @@ void MainWindow::onImportProgress(int processed, int total, int found) {
 void MainWindow::onImportFinished() {
     progress_->hide();
     cancelButton_->hide();
+    if (discardImport_) {
+        discardImport_ = false;
+        infoLabel_->setText(tr("Importação cancelada."));
+        return;
+    }
     const ScanResult& r = import_->result();
+    importIssues_.insert(importIssues_.end(), r.issues.begin(), r.issues.end());
     const std::size_t added = db_.addInstances(r.instances);
     browser_->setDatabase(db_);
     for (const auto& s : db_.allSeries()) {
@@ -701,12 +707,12 @@ void MainWindow::onImportFinished() {
     }
     infoLabel_->setText(msg);
     if (!r.issues.empty()) {
-        auto* fileMenu = menuBar()->actions().front()->menu();
-        static QAction* issuesAction = nullptr;
-        if (issuesAction == nullptr) {
-            issuesAction = new QAction(tr("Problemas de importação…"), this);
-            connect(issuesAction, &QAction::triggered, this, &MainWindow::showImportIssues);
-            fileMenu->insertAction(fileMenu->actions().at(3), issuesAction);
+        if (issuesAction_ == nullptr) {
+            auto* fileMenu = menuBar()->actions().front()->menu();
+            issuesAction_ = new QAction(tr("Problemas de importação…"), this);
+            connect(issuesAction_, &QAction::triggered, this, &MainWindow::showImportIssues);
+            const auto actions = fileMenu->actions();
+            fileMenu->insertAction(actions.size() > 3 ? actions.at(3) : nullptr, issuesAction_);
         }
         statusBar()->showMessage(msg, 10000);
     }
@@ -717,11 +723,17 @@ void MainWindow::onImportFinished() {
         anyShown = anyShown || vp->source() != nullptr;
     }
     if (!anyShown) {
+        // Largest series that is not a scout/localizer; a localizer only when
+        // nothing else exists.
         SeriesPtr best;
+        bool bestIsLocalizer = true;
         for (const auto& s : db_.allSeries()) {
             const bool localizer = s->frameCount() <= 3 || s->firstInstance().hasLocalizerImageType;
-            if (!best || (!localizer && s->frameCount() > best->frameCount())) {
+            const bool better = !best || (bestIsLocalizer && !localizer) ||
+                                (localizer == bestIsLocalizer && s->frameCount() > best->frameCount());
+            if (better) {
                 best = s;
+                bestIsLocalizer = localizer;
             }
         }
         if (best) {
@@ -735,7 +747,6 @@ void MainWindow::onImportFinished() {
 }
 
 void MainWindow::showImportIssues() {
-    const ScanResult& r = import_->result();
     QDialog dlg(this);
     dlg.setWindowTitle(tr("Problemas de importação"));
     dlg.resize(820, 420);
@@ -744,7 +755,7 @@ void MainWindow::showImportIssues() {
     tree->setHeaderLabels({tr("Arquivo"), tr("Motivo")});
     tree->header()->setSectionResizeMode(0, QHeaderView::Interactive);
     tree->setColumnWidth(0, 380);
-    for (const auto& issue : r.issues) {
+    for (const auto& issue : importIssues_) {
         new QTreeWidgetItem(tree, {QString::fromStdString(issue.filePath), QString::fromStdString(issue.message)});
     }
     layout->addWidget(tree);
@@ -758,6 +769,10 @@ void MainWindow::closeStudies() {
     if (mprBuilding_) {
         mprCancel_ = true;
     }
+    // An import still running would add its images to the emptied list.
+    import_->cancel();
+    discardImport_ = import_->running();
+    importIssues_.clear();
     grid_->clearAll();
     annotations_->clearAll();
     annotations_->undoStack()->clear();
@@ -871,7 +886,25 @@ void MainWindow::startMpr(const QString& seriesId) {
     const std::uint64_t ram = physicalMemoryBytes();
     const std::uint64_t maxBytes = ram > 0 ? std::max<std::uint64_t>(ram / 2, 512 * MiB) : 2048 * MiB;
     mprThread_ = std::thread([this, series, maxBytes] {
-        auto fetch = [this](const FrameRef& r) { return frames_->decodeNow(r); };
+        // Multi-frame objects (Enhanced CT/MR) are decoded once and kept here
+        // while their frames are copied: going through the cache frame by
+        // frame would decode the whole file again whenever it does not fit.
+        const InstanceInfo* memoInstance = nullptr;
+        std::vector<DecodedFramePtr> memoFrames;
+        auto fetch = [this, &memoInstance, &memoFrames](const FrameRef& r) -> DecodedFramePtr {
+            if (auto f = frames_->cached(r)) {
+                return f;
+            }
+            if (r.instance->numberOfFrames > 1) {
+                if (memoInstance != r.instance.get()) {
+                    memoFrames = frames_->decodeAllNow(r);
+                    memoInstance = r.instance.get();
+                }
+                const auto idx = static_cast<std::size_t>(r.frame);
+                return idx < memoFrames.size() ? memoFrames[idx] : nullptr;
+            }
+            return frames_->decodeNow(r);
+        };
         auto progress = [this](int done, int total) {
             QMetaObject::invokeMethod(
                 this,
@@ -980,7 +1013,12 @@ void MainWindow::rebuildPresetMenu() {
                                                  .arg(p.width)
                                                  .arg(p.center),
                                              this, [this, p] { applyPreset(p); });
+            // Shown for reference only: keys 1-8 are window-wide actions
+            // created once in createActions(). A second window-wide action
+            // with the same key would make Qt treat the shortcut as
+            // ambiguous and neither would fire.
             a->setShortcut(QKeySequence(Qt::Key_0 + k++));
+            a->setShortcutContext(Qt::WidgetShortcut);
         }
     }
     const auto custom = AppSettings::instance().customPresets();

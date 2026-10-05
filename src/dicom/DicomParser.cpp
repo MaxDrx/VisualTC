@@ -206,14 +206,22 @@ void readPlaneAttributes(const Access& a, FrameGeometry& g) {
     }
     const auto iop = a.dsMulti(0x0020, 0x0037);
     if (iop.size() == 6) {
-        Vec3 r{iop[0], iop[1], iop[2]};
-        Vec3 c{iop[3], iop[4], iop[5]};
-        // Accept slightly non-normalized vectors (common rounding), reject
-        // degenerate ones.
-        if (r.norm() > 0.5 && c.norm() > 0.5 && std::abs(r.normalized().dot(c.normalized())) < 0.05) {
-            g.hasOrientation = true;
-            g.rowDir = r.normalized();
-            g.colDir = c.normalized();
+        const Vec3 r{iop[0], iop[1], iop[2]};
+        const Vec3 c{iop[3], iop[4], iop[5]};
+        // Direction cosines are often rounded to a few decimals. Accept small
+        // deviations (< ~0.6 degree) and make the basis exactly orthonormal
+        // (Gram-Schmidt, keeping the row direction), because every geometric
+        // computation (patient<->pixel, MPR planes, reference lines) assumes
+        // it. Degenerate or clearly skewed vectors are not trusted.
+        if (r.norm() > 0.5 && c.norm() > 0.5) {
+            const Vec3 rn = r.normalized();
+            const Vec3 cn = c.normalized();
+            const double dot = rn.dot(cn);
+            if (std::abs(dot) < 0.01) {
+                g.hasOrientation = true;
+                g.rowDir = rn;
+                g.colDir = (cn - rn * dot).normalized();
+            }
         }
     }
 }
@@ -329,6 +337,12 @@ void applyFunctionalGroup(const Access& fg, FrameInfo& f) {
 void readUltrasoundCalibration(const Access& a, FrameGeometry& g) {
     for (const auto* d : a.items(0x0018, 0x6011)) {  // Sequence of Ultrasound Regions
         const Access r = a.nested(*d);
+        // Only 2D tissue/flow regions calibrate distances in the image plane
+        // (M-mode, spectral Doppler and waveform regions use time axes).
+        const auto spatialFormat = r.us(0x0018, 0x6012);
+        if (spatialFormat && *spatialFormat != 1) {
+            continue;
+        }
         const auto unitsX = r.us(0x0018, 0x6024);
         const auto unitsY = r.us(0x0018, 0x6026);
         const auto dx = r.fd(0x0018, 0x602C);
@@ -583,6 +597,15 @@ ParseResult parseDicomHeader(const std::filesystem::path& file, const ParseLimit
                                      dataset.FindDataElement(gdcm::Tag(0x7fe0, 0x0009));
     const bool pixelModulePresent = info->rows > 0 && info->columns > 0 && info->bitsAllocated > 0;
     info->hasPixelData = pixelModulePresent && (pixelElementPresent || !info->photometricInterpretation.empty());
+
+    const bool floatPixels = !reachedPixelData && (dataset.FindDataElement(gdcm::Tag(0x7fe0, 0x0008)) ||
+                                                   dataset.FindDataElement(gdcm::Tag(0x7fe0, 0x0009)));
+    if (info->hasPixelData && floatPixels) {
+        result.status = ParseStatus::Unsupported;
+        result.message = "Dados de pixel em ponto flutuante (Float/Double Float Pixel Data, ex.: mapas paramétricos) "
+                         "não são suportados nesta versão.";
+        return result;
+    }
 
     if (!info->hasPixelData) {
         result.status = ParseStatus::NonImage;

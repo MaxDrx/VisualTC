@@ -456,7 +456,8 @@ bool decodeDecodeResult(const std::vector<std::uint8_t>& msg, DecodeResult& res,
         }
         f->format = static_cast<PixelFormat>(fmt);
         if (f->width <= 0 || f->height <= 0 || f->width > limits.maxColumns || f->height > limits.maxRows ||
-            !std::isfinite(f->slope) || !std::isfinite(f->intercept)) {
+            !std::isfinite(f->slope) || !std::isfinite(f->intercept) || !std::isfinite(f->minRaw) ||
+            !std::isfinite(f->maxRaw) || f->minRaw > f->maxRaw || f->bitsStored < 1 || f->bitsStored > 32) {
             return false;
         }
         const std::uint64_t expected = static_cast<std::uint64_t>(f->width) * static_cast<std::uint64_t>(f->height) *

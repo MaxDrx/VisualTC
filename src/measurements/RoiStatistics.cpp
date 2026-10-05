@@ -64,6 +64,55 @@ void scan(const DecodedFrame& frame, double x0, double y0, double x1, double y1,
     acc.fill(s);
 }
 
+// Pixels whose centres lie inside the polygon, by scan line: for each image
+// row the edge crossings are computed once and sorted, which selects exactly
+// the pixels accepted by pointInPolygon() (even-odd rule, crossing strictly
+// to the right of the centre) at O(rows x edges + pixels) instead of
+// O(pixels x edges): large freehand ROIs stay interactive.
+void scanPolygon(const DecodedFrame& frame, const std::vector<Point2>& pts, double x0, double y0, double x1,
+                 double y1, RoiStatistics& s, std::vector<double>* values) {
+    Accumulator acc;
+    if (!frame.isColor() && pts.size() >= 3) {
+        const int i0 = std::max(0, static_cast<int>(std::ceil(x0)));
+        const int i1 = std::min(frame.width - 1, static_cast<int>(std::floor(x1)));
+        const int j0 = std::max(0, static_cast<int>(std::ceil(y0)));
+        const int j1 = std::min(frame.height - 1, static_cast<int>(std::floor(y1)));
+        std::vector<double> crossings;
+        const std::size_t n = pts.size();
+        for (int j = j0; j <= j1; ++j) {
+            const double py = static_cast<double>(j);
+            crossings.clear();
+            for (std::size_t i = 0, k = n - 1; i < n; k = i++) {
+                const Point2& a = pts[i];
+                const Point2& b = pts[k];
+                if ((a.y > py) != (b.y > py)) {
+                    crossings.push_back((b.x - a.x) * (py - a.y) / (b.y - a.y) + a.x);
+                }
+            }
+            if (crossings.empty()) {
+                continue;
+            }
+            std::sort(crossings.begin(), crossings.end());
+            // inside(x) <=> odd number of crossings c with x < c
+            std::size_t notRight = 0;  // crossings c <= x
+            for (int i = i0; i <= i1; ++i) {
+                const double px = static_cast<double>(i);
+                while (notRight < crossings.size() && crossings[notRight] <= px) {
+                    ++notRight;
+                }
+                if (((crossings.size() - notRight) & 1u) != 0) {
+                    const double v = frame.valueAt(i, j);
+                    acc.add(v);
+                    if (values != nullptr && !std::isnan(v)) {
+                        values->push_back(v);
+                    }
+                }
+            }
+        }
+    }
+    acc.fill(s);
+}
+
 }  // namespace
 
 RoiStatistics rectangleStats(const DecodedFrame& frame, Point2 p0, Point2 p1, double sx, double sy,
@@ -127,7 +176,7 @@ RoiStatistics polygonStats(const DecodedFrame& frame, const std::vector<Point2>&
     }
     s.widthMm = (x1 - x0) * sx;
     s.heightMm = (y1 - y0) * sy;
-    scan(frame, x0, y0, x1, y1, [&pts](double x, double y) { return pointInPolygon(pts, {x, y}); }, s, values);
+    scanPolygon(frame, pts, x0, y0, x1, y1, s, values);
     return s;
 }
 

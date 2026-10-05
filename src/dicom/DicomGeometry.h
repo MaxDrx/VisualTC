@@ -11,7 +11,7 @@ namespace vtc {
 enum class GeometryIssue {
     MissingGeometry,       // some frame lacks position/orientation/spacing
     MixedOrientation,      // frames are not parallel
-    MixedSize,             // rows/columns differ
+    MixedSize,             // rows/columns (or pixel spacing) differ
     MixedFrameOfReference, // frames use different coordinate systems
     DuplicatePositions,    // two frames at the same location
     MissingSlices,         // gaps larger than 1.5x the typical spacing
@@ -55,6 +55,10 @@ StackGeometry analyzeStack(const std::vector<FrameRef>& frames);
 
 // True when both direction cosines agree within ~1 degree.
 bool sameOrientation(const FrameGeometry& a, const FrameGeometry& b, double cosTolerance = 0.9998);
+
+// True when both frames have the same calibration source and in-plane pixel
+// spacing (relative tolerance 0.1%).
+bool sameSpacing(const FrameGeometry& a, const FrameGeometry& b);
 
 // Intersection of the plane (point, normal) with the segment [a, b].
 bool intersectSegmentWithPlane(const Vec3& a, const Vec3& b, const Vec3& planePoint, const Vec3& planeNormal,

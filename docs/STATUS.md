@@ -1,6 +1,6 @@
 # Estado do projeto — VisualTC 0.1.0
 
-Atualizado em 05/10/2026. Convenção: um item só entra em **IMPLEMENTADO**
+Atualizado em 05/10/2026 (inclui a revisão de código). Convenção: um item só entra em **IMPLEMENTADO**
 depois de compilado e testado (teste automatizado e/ou verificação visual
 por captura de tela). A numeração (§) segue as seções do prompt mestre.
 
@@ -127,6 +127,34 @@ por captura de tela). A numeração (§) segue as seções do prompt mestre.
 | Qt sem plataforma gráfica neste ambiente de desenvolvimento | interface verificada só offscreen aqui | CI executa em Windows/macOS/Ubuntu reais |
 | Volumes acima do limite configurado não abrem em MPR | MPR indisponível nesses exames | mensagem clara; o limite pode ser ajustado |
 
+## REVISÃO DE CÓDIGO (05/10/2026) — erros encontrados e corrigidos
+Cada correção tem um teste que falhava antes e passa depois.
+
+| # | Erro | Consequência antes da correção | Teste |
+|---|---|---|---|
+| 1 | Valores decimais (DS) lidos com `strtod`, que segue a localidade do sistema | Em computador configurado em português, sem o processo isolado: PixelSpacing, posição, espessura e rescale com decimais eram descartados (medidas em pixels, HU errados com intercept "-1024.0", MPR indisponível) | `DS parsing does not depend on the process locale` |
+| 2 | Imagem que falha na decodificação era pedida de novo a cada repintura | Laço infinito de decodificação (533 tentativas em 0,8 s), reinício contínuo do decodificador isolado, CPU a 100 % e log crescendo | `failedDecodeIsNotRetriedInALoop` |
+| 3 | Arquivo multiframe maior que o cache: o quadro visível era expulso pelos demais do mesmo arquivo | Decodificação em laço do arquivo inteiro (37 s para exibir um quadro); no MPR, o arquivo era decodificado uma vez por corte | `multiFrameLargerThanCacheDoesNotThrash` |
+| 4 | Atalhos 1–8 registrados duas vezes (ações da janela e do menu de presets) | Depois de abrir o menu de presets uma vez, as teclas 1–8 paravam de funcionar (atalho ambíguo) | `mainWindowShortcutsAreUniqueAndPresetsWork` |
+| 5 | Cache de renderização do viewport comparava ponteiros crus | Possível exibição dos pixels de outro corte se um quadro novo fosse alocado no mesmo endereço do anterior | revisão (reforço estrutural: referência compartilhada) |
+| 6 | Pilhas com espaçamento de pixel diferente (dois FOVs na mesma série) eram intercaladas | Volume MPR com geometria errada | `Stacks with different pixel spacing are never merged` |
+| 7 | Vetores de orientação aceitos com até 0,05 de não ortogonalidade, sem correção | Pequenos erros em posição do paciente, planos MPR e linhas de referência | `Nearly orthogonal orientation vectors are orthonormalized` |
+| 8 | Na varredura estrutural, Pixel Data implícito que começasse com bytes de um "Item" era lido como sequência | Arquivo válido rejeitado como corrompido | `Implicit VR pixel data that starts like an item tag is not rejected` |
+| 9 | Float Pixel Data (mapas paramétricos) relatado como "arquivo truncado" | Mensagem enganosa | `Float Pixel Data is reported as unsupported, not as truncated` |
+| 10 | Arquivos truncados entravam na série | Corte com erro na pilha e falha ao montar o volume MPR | revisão do scanner |
+| 11 | Calibração de US aceita de regiões que não são 2D | Medida em mm com calibração de região de Doppler/M-mode | revisão do parser |
+| 12 | Duplo clique na lista de séries abria a série duas vezes | Trabalho duplicado | revisão |
+| 13 | "Fechar estudos" com importação em andamento | As imagens da importação reapareciam na lista recém-limpa | revisão |
+| 14 | Escolha da série aberta automaticamente | Podia abrir um topograma em vez da série principal | revisão |
+| 15 | Relatório de problemas mostrava só a última importação; ponteiro estático na janela | Problemas anteriores perdidos | revisão |
+| 16 | Log só era rotacionado na abertura | Uma sessão longa podia crescer o log sem limite | revisão |
+| 17 | Decodificador isolado escrevia o protocolo no stdout comum | Uma biblioteca que imprimisse no stdout corromperia a resposta (o app trataria como falha) | revisão (canal privado) |
+| 18 | ROI livre testava cada pixel contra todos os vértices | Lentidão ao ajustar janela com ROIs livres grandes | `Freehand ROI pixel membership matches the point-in-polygon rule` |
+
+Verificado e **sem erro**: Planar Configuration = 1 declarada indevidamente em
+JPEG/JPEG-LS/JPEG 2000 coloridos (teste `Compressed colour ignores a wrong
+Planar Configuration` adicionado como proteção).
+
 ## DECISÕES DE ARQUITETURA
 1. **GDCM como biblioteca DICOM principal** (BSD, codecs incluídos,
    tolerante); DCMTK reservado para rede. Ver ARCHITECTURE.md § B.
@@ -155,11 +183,12 @@ GDCM 3.0.24, Catch2 3.7.1.
 
 | Conjunto | Resultado |
 |---|---|
-| `ctest` Release (`linux-local`) | 77/77 aprovados (76 casos Catch2 + suíte de interface) |
-| `ctest` Debug + ASan + UBSan | 77/77 aprovados, sem erros do sanitizer |
-| Interface (QtTest offscreen) | 8 testes: janela DICOM, arrasto W/L, roda/teclado, régua 50 mm, ROI em HU, sincronização espacial, crosshair do MPR, queda do worker |
+| `ctest` Release (`linux-local`) | 84/84 aprovados (83 casos Catch2 + suíte de interface); o teste de localidade roda com `pt_BR.UTF-8` instalada (no CI ela é gerada) |
+| `ctest` Debug + ASan + UBSan | 84/84 aprovados, sem erros do sanitizer |
+| Interface (QtTest offscreen) | 11 testes: janela DICOM, arrasto W/L, roda/teclado, régua 50 mm, ROI em HU, sincronização espacial, crosshair do MPR, queda do worker, falha sem laço de decodificação, multiframe maior que o cache, atalhos únicos e preset pela tecla 1 na janela principal |
+| Localidade | app sem processo isolado com `LC_ALL=pt_BR.UTF-8`: calibração, espessura, posição e MPR corretos |
 | QA numérico | 1000 × 1 − 1024 = −24 HU; 100 px × 0,5 mm = 50 mm; VOI conforme PS3.3; MPR exato em fantomas lineares (axial, tilt, espaçamento irregular, oblíquo) |
-| Fuzzing (ASan, em processo) | 3 000 arquivos nativos corrompidos + 13 500 JPEG/JPEG Lossless/RLE corrompidos: nenhuma falha |
+| Fuzzing (ASan, em processo) | 3 000 arquivos nativos corrompidos + 15 900 JPEG/JPEG Lossless/RLE corrompidos: nenhuma falha |
 | Isolamento | queda forçada do worker durante a decodificação: app continua e reinicia o worker |
 | Verificação visual | capturas em `docs/screenshots/` (1×1, 2×2 com sincronização e medidas, 3×3 com todas as modalidades, MPR fino e MIP 20 mm) |
 | Desempenho (`vtc_bench`, Release, 2 núcleos) | varredura de 425 arquivos: 21 ms; decodificação por imagem: nativo 0,5 ms, JPEG-LS 1,0 ms, J2K 4,5 ms, RLE 4,7 ms, US 40 quadros RGB 17 ms; W/L 0,1–0,9 ms; volume 400×400×221 em 234 ms; MPR plano fino 2–3 ms; MIP 20 mm 44–64 ms |

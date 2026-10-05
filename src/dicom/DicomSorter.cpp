@@ -213,6 +213,13 @@ bool compatible(const FrameRef& a, const FrameRef& b) {
     if (ga.isSpatial() != gb.isSpatial() || ga.hasOrientation != gb.hasOrientation) {
         return false;
     }
+    // Different fields of view (pixel spacing) are different reconstructions,
+    // even with the same matrix and orientation: never interleave them.
+    // (Non-spatial images, e.g. ultrasound clips with different depths, are
+    // never stacked into volumes and stay grouped as before.)
+    if (ga.isSpatial() && !sameSpacing(ga, gb)) {
+        return false;
+    }
     return !ga.hasOrientation || sameOrientation(ga, gb);
 }
 

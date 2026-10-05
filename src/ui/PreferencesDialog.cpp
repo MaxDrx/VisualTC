@@ -1,5 +1,7 @@
 #include "ui/PreferencesDialog.h"
 
+#include <QLocale>
+
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDialogButtonBox>
@@ -121,8 +123,8 @@ PreferencesDialog::PreferencesDialog(QWidget* parent) : QDialog(parent) {
         const int r = presets_->rowCount();
         presets_->insertRow(r);
         presets_->setItem(r, 0, new QTableWidgetItem(QString::fromStdString(p.name)));
-        presets_->setItem(r, 1, new QTableWidgetItem(QString::number(p.center)));
-        presets_->setItem(r, 2, new QTableWidgetItem(QString::number(p.width)));
+        presets_->setItem(r, 1, new QTableWidgetItem(QLocale().toString(p.center, 'f', QLocale::FloatingPointShortest)));
+        presets_->setItem(r, 2, new QTableWidgetItem(QLocale().toString(p.width, 'f', QLocale::FloatingPointShortest)));
     }
     dicomLayout->addWidget(presets_);
     auto* row = new QHBoxLayout;
@@ -152,6 +154,20 @@ PreferencesDialog::PreferencesDialog(QWidget* parent) : QDialog(parent) {
     layout->addWidget(buttons);
 }
 
+namespace {
+// Numbers typed by the user follow the interface locale (pt-BR: "1.500" is
+// fifteen hundred, "40,5" is forty and a half); plain C notation is accepted
+// as a fallback. Replacing ',' by '.' would turn "1.500" into 1.5.
+double parseUserNumber(const QString& text, bool* ok) {
+    const QString t = text.trimmed();
+    double v = QLocale().toDouble(t, ok);
+    if (!*ok) {
+        v = QLocale::c().toDouble(t, ok);
+    }
+    return v;
+}
+}  // namespace
+
 void PreferencesDialog::accept() {
     auto& s = AppSettings::instance();
     s.setDarkTheme(darkTheme_->isChecked());
@@ -175,8 +191,8 @@ void PreferencesDialog::accept() {
         p.name = presets_->item(r, 0) ? presets_->item(r, 0)->text().trimmed().toStdString() : std::string();
         bool okC = false;
         bool okW = false;
-        p.center = presets_->item(r, 1) ? presets_->item(r, 1)->text().replace(',', '.').toDouble(&okC) : 0.0;
-        p.width = presets_->item(r, 2) ? presets_->item(r, 2)->text().replace(',', '.').toDouble(&okW) : 0.0;
+        p.center = presets_->item(r, 1) ? parseUserNumber(presets_->item(r, 1)->text(), &okC) : 0.0;
+        p.width = presets_->item(r, 2) ? parseUserNumber(presets_->item(r, 2)->text(), &okW) : 0.0;
         if (!p.name.empty() && okC && okW && p.width >= 1.0) {
             presets.push_back(p);
         }

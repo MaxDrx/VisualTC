@@ -86,7 +86,7 @@ void Viewport::setSource(std::shared_ptr<ImageSource> source, const ViewState* r
     referenceLines_.clear();
     crosshairLines_.clear();
     crosshairCenter_.reset();
-    renderedFrame_ = nullptr;
+    renderedFrame_.reset();
     if (!source_) {
         update();
         return;
@@ -155,7 +155,7 @@ void Viewport::onImageReady(int index) {
 }
 
 void Viewport::onSourceContentChanged() {
-    renderedFrame_ = nullptr;
+    renderedFrame_.reset();
     updateFrame();
     update();
 }
@@ -560,8 +560,10 @@ void Viewport::ensureRendered() const {
     if (!shownFrame_) {
         return;
     }
-    if (renderedFrame_ == shownFrame_.get() && renderedCenter_ == center_ && renderedWidth_ == width_ &&
-        renderedInvert_ == invert_ && renderedVoiLut_ == useVoiLut_ && !rendered_.isNull()) {
+    const InstanceInfo* instance = source_ ? source_->instanceAt(shownIndex_) : nullptr;
+    if (renderedFrame_ == shownFrame_ && renderedInstance_ == instance && renderedIndex_ == shownIndex_ &&
+        renderedCenter_ == center_ && renderedWidth_ == width_ && renderedInvert_ == invert_ &&
+        renderedVoiLut_ == useVoiLut_ && !rendered_.isNull()) {
         return;
     }
     const DecodedFrame& f = *shownFrame_;
@@ -569,7 +571,7 @@ void Viewport::ensureRendered() const {
     params.center = center_;
     params.width = width_;
     params.invert = invert_;
-    const InstanceInfo* inst = source_ ? source_->instanceAt(shownIndex_) : nullptr;
+    const InstanceInfo* inst = instance;
     if (inst != nullptr) {
         params.function = parseVoiFunction(inst->voiLutFunction);
         if (useVoiLut_ && inst->voiLut) {
@@ -588,7 +590,9 @@ void Viewport::ensureRendered() const {
         }
         renderer_.renderGray(f, params, rendered_.bits(), static_cast<int>(rendered_.bytesPerLine()));
     }
-    renderedFrame_ = shownFrame_.get();
+    renderedFrame_ = shownFrame_;
+    renderedInstance_ = instance;
+    renderedIndex_ = shownIndex_;
     renderedCenter_ = center_;
     renderedWidth_ = width_;
     renderedInvert_ = invert_;

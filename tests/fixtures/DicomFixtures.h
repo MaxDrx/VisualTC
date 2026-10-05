@@ -103,6 +103,14 @@ bool transcode(const std::filesystem::path& in, const std::filesystem::path& out
 // file, leaving the (possibly encapsulated) pixel data untouched.
 bool setPhotometric(const std::filesystem::path& file, const std::string& photometric);
 
+// Rewrites one binary US attribute (e.g. Planar Configuration) of an existing
+// file, leaving the pixel data untouched.
+bool setUS(const std::filesystem::path& file, std::uint16_t group, std::uint16_t element, std::uint16_t value);
+
+// Replaces the integer Pixel Data (7FE0,0010) by Float Pixel Data
+// (7FE0,0008, VR OF) with the same number of samples (parametric maps).
+bool convertToFloatPixelData(const std::filesystem::path& file);
+
 // Strips the 128-byte preamble, "DICM" and the File Meta group, producing a
 // raw implicit-VR dataset as written by some old modalities.
 bool stripPart10Header(const std::filesystem::path& in, const std::filesystem::path& out);

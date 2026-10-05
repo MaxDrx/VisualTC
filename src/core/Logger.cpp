@@ -56,16 +56,30 @@ bool Logger::openFile(const std::filesystem::path& file, std::uintmax_t maxBytes
     std::lock_guard lock(mutex_);
     std::error_code ec;
     std::filesystem::create_directories(file.parent_path(), ec);
-    if (std::filesystem::exists(file, ec) && std::filesystem::file_size(file, ec) > maxBytes) {
-        std::filesystem::path old = file;
-        old += ".1";
-        std::filesystem::remove(old, ec);
-        std::filesystem::rename(file, old, ec);
-    }
-    file_.close();
-    file_.open(file, std::ios::out | std::ios::app);
     path_ = file;
+    maxBytes_ = maxBytes;
+    written_ = std::filesystem::exists(file, ec) ? std::filesystem::file_size(file, ec) : 0;
+    if (ec) {
+        written_ = 0;
+    }
+    if (written_ > maxBytes_) {
+        rotateLocked();
+    } else {
+        file_.close();
+        file_.open(file, std::ios::out | std::ios::app);
+    }
     return file_.is_open();
+}
+
+void Logger::rotateLocked() {
+    std::error_code ec;
+    file_.close();
+    std::filesystem::path old = path_;
+    old += ".1";
+    std::filesystem::remove(old, ec);
+    std::filesystem::rename(path_, old, ec);
+    file_.open(path_, std::ios::out | std::ios::trunc);
+    written_ = 0;
 }
 
 void Logger::setEchoToStderr(bool echo) {
@@ -89,6 +103,10 @@ void Logger::write(LogLevel level, std::string_view category, std::string_view m
     if (file_.is_open()) {
         file_ << s;
         file_.flush();
+        written_ += s.size();
+        if (written_ > maxBytes_) {
+            rotateLocked();  // a long session can never fill the disk
+        }
     }
     if (echo_) {
         std::cerr << s;
