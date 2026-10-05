@@ -1,0 +1,305 @@
+// Integration tests of the Qt layer, run headless (QT_QPA_PLATFORM=offscreen).
+#include <QSignalSpy>
+#include <QTemporaryDir>
+#include <QtTest>
+#include <cmath>
+
+#include "core/PathUtil.h"
+#include "dicom/DicomStudy.h"
+#include "fixtures/DicomFixtures.h"
+#include "io/DecoderClient.h"
+#include "io/FrameProvider.h"
+#include "io/ImportTask.h"
+#include "measurements/MeasurementMath.h"
+#include "mpr/ImageVolume.h"
+#include "mpr/MprSession.h"
+#include "mpr/MprSource.h"
+#include "ui/ViewerGrid.h"
+#include "viewer2d/AnnotationStore.h"
+#include "viewer2d/StackSource.h"
+#include "viewer2d/Viewport.h"
+
+using namespace vtc;
+using namespace vtc::test;
+
+namespace {
+
+// Series A: 16 slices 64x64, 0.5 mm pixels, 2 mm apart (z = 0..30).
+// Series B: 8 slices 32x32, 1 mm pixels, 4 mm apart (z = 0..28). Same FoR.
+// HU(x, y, z) = 10 * column - 1000 (series A), constant 50 (series B).
+void writeSeries(const QString& dir) {
+    const std::string study = makeUid("uistudy");
+    const std::string forUid = makeUid("uifor");
+    const std::string serA = makeUid("uiA");
+    const std::string serB = makeUid("uiB");
+    for (int k = 0; k < 16; ++k) {
+        SyntheticImage img;
+        img.studyInstanceUid = study;
+        img.seriesInstanceUid = serA;
+        img.frameOfReferenceUid = forUid;
+        img.seriesNumber = 2;
+        img.seriesDescription = "A";
+        img.rows = img.columns = 64;
+        img.spacingRow = img.spacingColumn = 0.5;
+        img.position = {-16.0, -16.0, k * 2.0};
+        img.instanceNumber = k + 1;
+        img.slope = 1.0;
+        img.intercept = -1024.0;
+        img.windowCenter = 40;
+        img.windowWidth = 400;
+        img.sliceThickness = 2.0;
+        for (int y = 0; y < 64; ++y) {
+            for (int x = 0; x < 64; ++x) {
+                img.pixels.push_back(static_cast<std::uint16_t>(static_cast<std::int16_t>(10 * x - 1000 + 1024)));
+            }
+        }
+        QVERIFY(writeDicom(utf8ToPath((dir + "/A" + QString::number(k)).toStdString()), img));
+    }
+    for (int k = 0; k < 8; ++k) {
+        SyntheticImage img;
+        img.studyInstanceUid = study;
+        img.seriesInstanceUid = serB;
+        img.frameOfReferenceUid = forUid;
+        img.seriesNumber = 3;
+        img.seriesDescription = "B";
+        img.rows = img.columns = 32;
+        img.spacingRow = img.spacingColumn = 1.0;
+        img.position = {-16.0, -16.0, k * 4.0};
+        img.instanceNumber = k + 1;
+        img.slope = 1.0;
+        img.intercept = -1024.0;
+        img.pixels.assign(32 * 32, static_cast<std::uint16_t>(50 + 1024));
+        QVERIFY(writeDicom(utf8ToPath((dir + "/B" + QString::number(k)).toStdString()), img, Encoding::JpegLsLossless));
+    }
+}
+
+}  // namespace
+
+class UiTests : public QObject {
+    Q_OBJECT
+
+private:
+    QTemporaryDir tmp_;
+    StudyDatabase db_;
+    FrameProvider* frames_ = nullptr;
+    AnnotationStore* store_ = nullptr;
+    SeriesPtr seriesA_;
+    SeriesPtr seriesB_;
+
+    void waitLoaded(Viewport& vp) { QTRY_VERIFY_WITH_TIMEOUT(vp.currentFrame() != nullptr, 20000); }
+
+private Q_SLOTS:
+    void initTestCase() {
+        QVERIFY(tmp_.isValid());
+        writeSeries(tmp_.path());
+        DecoderClient::initialize(true, QStringLiteral(VISUALTC_WORKER_PATH));
+        QVERIFY(DecoderClient::isolationActive());
+        frames_ = new FrameProvider(256ull << 20, 2, this);
+        store_ = new AnnotationStore(this);
+
+        ImportTask task;
+        QSignalSpy done(&task, &ImportTask::finished);
+        QVERIFY(task.start({tmp_.path()}));
+        QVERIFY(done.wait(30000));
+        QCOMPARE(task.result().instances.size(), std::size_t(24));
+        QCOMPARE(task.result().issues.size(), std::size_t(0));
+        db_.addInstances(task.result().instances);
+        for (const auto& s : db_.allSeries()) {
+            (s->frameCount() == 16 ? seriesA_ : seriesB_) = s;
+        }
+        QVERIFY(seriesA_ && seriesB_);
+        QVERIFY(seriesA_->geometry.volumetric);
+    }
+
+    void displaysImageWithDicomWindow() {
+        Viewport vp(store_);
+        vp.resize(400, 400);
+        vp.show();
+        vp.setSource(std::make_shared<StackSource>(seriesA_, frames_, false));
+        waitLoaded(vp);
+        QCOMPARE(vp.windowCenter(), 40.0);
+        QCOMPARE(vp.windowWidth(), 400.0);
+        QCOMPARE(vp.currentFrame()->valueAt(10, 3), 10.0 * 10 - 1000);
+        const QImage img = vp.renderImage(true, true);
+        QVERIFY(!img.isNull());
+    }
+
+    void windowLevelDragFollowsMouse() {
+        Viewport vp(store_);
+        vp.resize(400, 400);
+        vp.show();
+        vp.setSource(std::make_shared<StackSource>(seriesA_, frames_, false));
+        waitLoaded(vp);
+        vp.setTool(Tool::WindowLevel);
+        QTest::mousePress(&vp, Qt::LeftButton, Qt::NoModifier, QPoint(200, 200));
+        QTest::mouseMove(&vp, QPoint(250, 210));
+        QTest::mouseRelease(&vp, Qt::LeftButton, Qt::NoModifier, QPoint(250, 210));
+        // sensitivity = width / 250 = 1.6 per pixel
+        QCOMPARE(vp.windowWidth(), 400.0 + 50 * 1.6);
+        QCOMPARE(vp.windowCenter(), 40.0 + 10 * 1.6);
+    }
+
+    void wheelAndKeyboardNavigation() {
+        Viewport vp(store_);
+        vp.resize(400, 400);
+        vp.show();
+        vp.setSource(std::make_shared<StackSource>(seriesA_, frames_, false));
+        waitLoaded(vp);
+        QCOMPARE(vp.sliceIndex(), 0);
+        QWheelEvent wheel(QPointF(200, 200), vp.mapToGlobal(QPointF(200, 200)), QPoint(), QPoint(0, -120),
+                          Qt::NoButton, Qt::NoModifier, Qt::NoScrollPhase, false);
+        QApplication::sendEvent(&vp, &wheel);
+        QCOMPARE(vp.sliceIndex(), 1);
+        QTest::keyClick(&vp, Qt::Key_End);
+        QCOMPARE(vp.sliceIndex(), 15);
+        QTest::keyClick(&vp, Qt::Key_Up);
+        QCOMPARE(vp.sliceIndex(), 14);
+        QTest::keyClick(&vp, Qt::Key_Home);
+        QCOMPARE(vp.sliceIndex(), 0);
+    }
+
+    void distanceMeasurementInMillimetres() {
+        Viewport vp(store_);
+        vp.resize(400, 400);
+        vp.show();
+        vp.setSource(std::make_shared<StackSource>(seriesA_, frames_, false));
+        waitLoaded(vp);
+        vp.setTool(Tool::Distance);
+        QTest::mousePress(&vp, Qt::LeftButton, Qt::NoModifier, QPoint(100, 200));
+        QTest::mouseMove(&vp, QPoint(200, 200));
+        QTest::mouseRelease(&vp, Qt::LeftButton, Qt::NoModifier, QPoint(200, 200));
+        const auto& list = store_->list(vp.source()->annotationKey(vp.sliceIndex()));
+        QCOMPARE(list.size(), std::size_t(1));
+        const auto& a = list.front();
+        // Fit zoom: 0.98 * 400 / (64 * 0.5) = 12.25 screen px per mm -> 100 px = 8.163 mm
+        const double mm = distanceMm(a->points[0], a->points[1], 0.5, 0.5);
+        QVERIFY(std::abs(mm - 100.0 / 12.25) < 1e-6);
+        QVERIFY(a->labelLines(vp.measureContext()).front().contains("mm"));
+
+        // Undo / redo / delete
+        store_->undoStack()->undo();
+        QCOMPARE(store_->list(vp.source()->annotationKey(0)).size(), std::size_t(0));
+        store_->undoStack()->redo();
+        QCOMPARE(store_->list(vp.source()->annotationKey(0)).size(), std::size_t(1));
+        store_->clearAll();
+        QCOMPARE(store_->totalCount(), 0);
+    }
+
+    void roiReportsHounsfieldUnits() {
+        Viewport vp(store_);
+        vp.resize(400, 400);
+        vp.show();
+        vp.setSource(std::make_shared<StackSource>(seriesA_, frames_, false));
+        waitLoaded(vp);
+        vp.setTool(Tool::RectRoi);
+        QTest::mousePress(&vp, Qt::LeftButton, Qt::NoModifier, QPoint(150, 150));
+        QTest::mouseMove(&vp, QPoint(250, 250));
+        QTest::mouseRelease(&vp, Qt::LeftButton, Qt::NoModifier, QPoint(250, 250));
+        const auto& list = store_->list(vp.source()->annotationKey(vp.sliceIndex()));
+        QCOMPARE(list.size(), std::size_t(1));
+        const QStringList lines = list.front()->labelLines(vp.measureContext());
+        // Symmetric ROI around the image centre: mean HU = 10 * 31.5 - 1000 = -685
+        bool found = false;
+        for (const auto& l : lines) {
+            if (l.startsWith(QStringLiteral("Média"))) {
+                found = l.contains("HU");
+            }
+        }
+        QVERIFY(found);
+        const auto values = list.front()->roiValues(vp.measureContext());
+        double mean = 0;
+        for (double v : values) {
+            mean += v;
+        }
+        mean /= static_cast<double>(values.size());
+        QVERIFY(std::abs(mean - (-685.0)) < 10.5);
+        store_->clearAll();
+    }
+
+    void spatialSyncUsesPatientPosition() {
+        ViewerGrid grid(store_);
+        grid.resize(800, 400);
+        grid.show();
+        grid.setLayoutGrid(1, 2);
+        auto vps = grid.visibleViewports();
+        grid.showSource(vps[0], std::make_shared<StackSource>(seriesA_, frames_, false));
+        grid.showSource(vps[1], std::make_shared<StackSource>(seriesB_, frames_, false));
+        waitLoaded(*vps[0]);
+        waitLoaded(*vps[1]);
+        grid.setSyncEnabled(true);
+        QVERIFY(grid.syncProblem().isEmpty());
+        vps[0]->setSliceIndex(4);  // z = 8 mm in A
+        QCOMPARE(vps[1]->sliceIndex(), 2);  // z = 8 mm in B (not index 4!)
+        vps[0]->setSliceIndex(13);  // z = 26 -> B nearest z = 24 or 28
+        QVERIFY(vps[1]->sliceIndex() == 6 || vps[1]->sliceIndex() == 7);
+        vps[1]->setSliceIndex(1);  // z = 4 in B -> A z = 4 (index 2)
+        QCOMPARE(vps[0]->sliceIndex(), 2);
+    }
+
+    void mprCrosshairDrivesOtherPlanes() {
+        auto fetch = [this](const FrameRef& r) { return frames_->decodeNow(r); };
+        auto built = ImageVolume::build(*seriesA_, fetch, 1ull << 30);
+        QVERIFY2(built.volume != nullptr, built.error.c_str());
+        auto session = std::make_shared<MprSession>(built.volume, seriesA_);
+        ViewerGrid grid(store_);
+        grid.resize(1200, 400);
+        grid.show();
+        grid.enterMpr(session);
+        auto vps = grid.visibleViewports();
+        QCOMPARE(vps.size(), std::size_t(3));
+        for (auto* vp : vps) {
+            waitLoaded(*vp);
+        }
+        // Click in the axial view: crosshair moves to that point.
+        Viewport* axial = vps[0];
+        const QPoint click(140, 120);
+        QTest::mousePress(axial, Qt::LeftButton, Qt::NoModifier, click);
+        QTest::mouseRelease(axial, Qt::LeftButton, Qt::NoModifier, click);
+        const auto picked = axial->patientPointAt(click);
+        QVERIFY(picked.has_value());
+        QVERIFY(distance(session->center(), *picked) < 1e-6);
+        const auto* coronal = dynamic_cast<MprSource*>(vps[1]->source().get());
+        const auto* sagittal = dynamic_cast<MprSource*>(vps[2]->source().get());
+        QCOMPARE(vps[1]->sliceIndex(), session->view(coronal->orientation()).sliceIndexOf(session->center()));
+        QCOMPARE(vps[2]->sliceIndex(), session->view(sagittal->orientation()).sliceIndexOf(session->center()));
+        // The coronal plane now passes through the clicked y coordinate.
+        const auto plane = coronal->planeAt(vps[1]->sliceIndex());
+        QVERIFY(std::abs(plane.origin.y - picked->y) <= session->view(MprOrientation::Coronal).step / 2 + 1e-6);
+        // Scrolling the axial view moves the crosshair along z.
+        const double z0 = session->center().z;
+        axial->scrollBy(3);
+        QVERIFY(std::abs(std::abs(session->center().z - z0) - 6.0) < 1e-6);
+        grid.exitMpr();
+    }
+
+    void isolatedDecoderSurvivesCrash() {
+        const std::string path = seriesA_->frames.front().instance->filePath;
+        QVERIFY(DecoderClient::decode(path).ok());
+        QVERIFY(DecoderClient::crashWorkerForTest());
+        // The next request transparently starts a fresh worker.
+        const auto again = DecoderClient::decode(path);
+        QVERIFY(again.ok());
+        // A corrupt file is reported, not fatal.
+        const QString bad = tmp_.path() + "/corrompido";
+        {
+            QFile f(bad);
+            QVERIFY(f.open(QIODevice::WriteOnly));
+            QFile src(QString::fromStdString(path));
+            QVERIFY(src.open(QIODevice::ReadOnly));
+            QByteArray bytes = src.readAll();
+            bytes.truncate(bytes.size() / 3);
+            f.write(bytes);
+        }
+        const auto broken = DecoderClient::decode(bad.toStdString());
+        QVERIFY(!broken.ok());
+        QVERIFY(!broken.error.empty());
+        DecoderClient::releaseThreadWorker();
+    }
+
+    void cleanupTestCase() {
+        frames_->shutdown();
+    }
+};
+
+QTEST_MAIN(UiTests)
+#include "test_ui.moc"

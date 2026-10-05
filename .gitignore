@@ -1,0 +1,29 @@
+# Build trees
+/build/
+/build-*/
+/out/
+CMakeUserPresets.json
+
+# vcpkg
+/vcpkg_installed/
+
+# Packaging output
+/dist/
+/stage/
+/AppDir/
+*.AppImage
+*.deb
+*.dmg
+VisualTC-Setup-*.exe
+
+# IDEs and OS files
+.vscode/
+.idea/
+*.user
+.DS_Store
+Thumbs.db
+
+# Never commit patient data
+*.dcm
+/exames/
+/phantom/

@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=VisualTC
+GenericName=DICOM Medical Image Viewer
+GenericName[pt_BR]=Visualizador de imagens médicas DICOM
+Comment=View CT, MR and other DICOM studies
+Comment[pt_BR]=Visualize exames de TC, RM e outras modalidades DICOM
+Exec=VisualTC %F
+Icon=visualtc
+Terminal=false
+Categories=Graphics;MedicalSoftware;Science;
+MimeType=application/dicom;
+Keywords=DICOM;CT;MRI;radiology;tomografia;ressonância;

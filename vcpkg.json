@@ -1,0 +1,15 @@
+{
+  "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
+  "name": "visualtc",
+  "version": "0.1.0",
+  "description": "VisualTC - DICOM Medical Image Viewer (C++20, Qt 6, GDCM)",
+  "builtin-baseline": "9e593bb18ea69cc5095e012465dcd675a822ed0d",
+  "dependencies": [
+    "gdcm",
+    "catch2"
+  ],
+  "overrides": [
+    { "name": "gdcm", "version": "3.0.24" },
+    { "name": "catch2", "version": "3.7.1" }
+  ]
+}
