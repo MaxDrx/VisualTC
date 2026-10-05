@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.21)
 
 project(VisualTC
-    VERSION 0.1.0
+    VERSION 0.2.0
     DESCRIPTION "VisualTC — DICOM Medical Image Viewer"
     LANGUAGES C CXX)
 
@@ -25,6 +25,7 @@ include(CompilerSettings)
 
 find_package(Threads REQUIRED)
 find_package(GDCM 3.0 REQUIRED CONFIG)
+include(LibArchiveSupport)  # ZIP / 7z / RAR / TAR / GZ / ISO reading
 
 add_subdirectory(src)
 

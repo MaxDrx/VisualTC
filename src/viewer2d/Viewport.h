@@ -104,6 +104,8 @@ public:
     void setActive(bool on);
     [[nodiscard]] bool isActive() const { return active_; }
     void setShowActiveFrame(bool on);
+    // Text shown when the viewport is empty (e.g. how to open an exam).
+    void setEmptyHint(const QString& text);
     void setTool(Tool tool);
     [[nodiscard]] Tool tool() const { return tool_; }
 
@@ -237,6 +239,7 @@ private:
     mutable bool renderedInvert_ = false;
     mutable bool renderedVoiLut_ = false;
     mutable bool hidePatient_ = false;
+    QString emptyHint_;
 
     std::vector<GuideLine> referenceLines_;
     std::vector<GuideLine> crosshairLines_;

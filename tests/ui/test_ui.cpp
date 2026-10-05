@@ -1,5 +1,6 @@
 // Integration tests of the Qt layer, run headless (QT_QPA_PLATFORM=offscreen).
 #include <QAction>
+#include <QDir>
 #include <QMenu>
 #include <QSignalSpy>
 #include <QStandardPaths>
@@ -13,6 +14,7 @@
 #include "fixtures/DicomFixtures.h"
 #include "io/DecoderClient.h"
 #include "io/FrameProvider.h"
+#include "io/ExtractionArea.h"
 #include "io/ImportTask.h"
 #include "ui/MainWindow.h"
 #include "measurements/MeasurementMath.h"
@@ -428,6 +430,84 @@ private Q_SLOTS:
         QTRY_COMPARE(active->windowCenter(), -600.0);
         QCOMPARE(active->windowWidth(), 1500.0);
         delete window;
+    }
+
+    void importOpensPasswordProtectedZip() {
+        // A ZIP with five slices of series A, protected with AES-256; the
+        // user first types a wrong password, then the right one.
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        std::vector<ArchiveMember> members;
+        for (int k = 0; k < 5; ++k) {
+            const auto& path = seriesA_->frames[static_cast<size_t>(k)].instance->filePath;
+            members.push_back({"EXAME/DICOM/IM" + std::to_string(k), readBytes(utf8ToPath(path)), {}});
+        }
+        const QString zip = dir.path() + "/exame do paciente.zip";
+        QVERIFY(writeArchive(utf8ToPath(zip.toStdString()), ArchiveFormat::Zip, members, "senha123", "aes256"));
+        ExtractionArea area(dir.path() + "/cache");
+        QVERIFY(area.valid());
+
+        ImportTask task;
+        QStringList asked;
+        task.setPasswordProvider([&](const QString& name, bool retry) -> std::optional<QString> {
+            asked << name;
+            return retry ? QStringLiteral("senha123") : QStringLiteral("errada");
+        });
+        QSignalSpy done(&task, &ImportTask::finished);
+        QVERIFY(task.start({zip}, area.newImportDir()));
+        QVERIFY(done.wait(60000));
+        QCOMPARE(asked.size(), 2);
+        QCOMPARE(asked.front(), QStringLiteral("exame do paciente.zip"));
+        const ScanResult& r = task.result();
+        QCOMPARE(r.archivesOpened, std::size_t(1));
+        QCOMPARE(r.instances.size(), std::size_t(5));
+        QCOMPARE(r.issues.size(), std::size_t(0));
+        for (const auto& inst : r.instances) {
+            QVERIFY(QString::fromStdString(inst->filePath).startsWith(area.sessionDir()));
+            QVERIFY(r.displayNames.count(inst->filePath) == 1);
+        }
+        QVERIFY(QString::fromStdString(r.displayNames.at(r.instances.front()->filePath))
+                    .startsWith(QStringLiteral("exame do paciente.zip › EXAME/DICOM/IM")));
+        // The extracted copies decode through the isolated worker like any file.
+        const auto decoded = DecoderClient::decode(r.instances.front()->filePath);
+        QVERIFY(decoded.ok());
+        // "Fechar estudos" empties the extraction folder.
+        area.clear();
+        QVERIFY(QDir(area.sessionDir()).entryList(QDir::AllEntries | QDir::NoDotAndDotDot).isEmpty());
+
+        // Without anyone to answer, a protected archive is reported, not opened.
+        ImportTask silent;
+        QSignalSpy silentDone(&silent, &ImportTask::finished);
+        QVERIFY(silent.start({zip}, area.newImportDir()));
+        QVERIFY(silentDone.wait(60000));
+        QCOMPARE(silent.result().instances.size(), std::size_t(0));
+        QCOMPARE(silent.result().issues.size(), std::size_t(1));
+        QVERIFY(QString::fromStdString(silent.result().issues.front().message).contains(QStringLiteral("senha")));
+    }
+
+    void extractionAreaCleansAbandonedSessions() {
+        QTemporaryDir base;
+        QVERIFY(base.isValid());
+        // Left behind by a session that crashed (no lock holder anymore).
+        QVERIFY(QDir().mkpath(base.path() + "/sessao-antiga/importacao-1"));
+        {
+            QFile f(base.path() + "/sessao-antiga/importacao-1/000001");
+            QVERIFY(f.open(QIODevice::WriteOnly));
+            f.write("DICM");
+        }
+        QString liveDir;
+        {
+            ExtractionArea live(base.path());
+            QVERIFY(live.valid());
+            liveDir = live.sessionDir();
+            QVERIFY(!QDir(base.path() + "/sessao-antiga").exists());
+            // A second instance starting now must not touch a running session.
+            ExtractionArea second(base.path());
+            QVERIFY(second.valid());
+            QVERIFY(QDir(liveDir).exists());
+            QVERIFY(second.sessionDir() != liveDir);
+        }
+        QVERIFY(!QDir(liveDir).exists());  // removed when the program closes
     }
 
     void cleanupTestCase() {

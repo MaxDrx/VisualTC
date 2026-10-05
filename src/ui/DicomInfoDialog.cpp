@@ -33,7 +33,9 @@ const char* spacingName(SpacingSource src) {
 }
 }  // namespace
 
-DicomInfoDialog::DicomInfoDialog(const SeriesPtr& series, int frameIndex, QWidget* parent) : QDialog(parent) {
+DicomInfoDialog::DicomInfoDialog(const SeriesPtr& series, int frameIndex, QWidget* parent,
+                                 const std::function<std::string(const std::string&)>& displayPath)
+    : QDialog(parent) {
     setWindowTitle(tr("Informações DICOM"));
     resize(640, 640);
     auto* layout = new QVBoxLayout(this);
@@ -133,7 +135,7 @@ DicomInfoDialog::DicomInfoDialog(const SeriesPtr& series, int frameIndex, QWidge
     add(gi, "Window Center / Width", windows.isEmpty() ? "N/A" : windows.join("; "));
     add(gi, "VOI LUT", inst.voiLut ? tr("presente") : tr("ausente"));
     add(gi, tr("Compressão com perdas"), inst.lossyCompressed ? tr("sim") : tr("não"));
-    add(gi, tr("Arquivo"), QString::fromStdString(inst.filePath));
+    add(gi, tr("Arquivo"), QString::fromStdString(displayPath ? displayPath(inst.filePath) : inst.filePath));
 
     auto* buttons = new QDialogButtonBox(QDialogButtonBox::Close, this);
     connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);

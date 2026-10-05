@@ -111,6 +111,18 @@ bool setUS(const std::filesystem::path& file, std::uint16_t group, std::uint16_t
 // (7FE0,0008, VR OF) with the same number of samples (parametric maps).
 bool convertToFloatPixelData(const std::filesystem::path& file);
 
+// --- archives (written with libarchive) ---------------------------------
+struct ArchiveMember {
+    std::string name;                // path inside the archive (may be hostile)
+    std::vector<std::uint8_t> data;  // file content
+    std::string symlinkTarget;       // non-empty: a symbolic link instead of a file
+};
+enum class ArchiveFormat { Zip, ZipStored, SevenZip, TarGz, TarBz2, TarXz, TarZstd, Iso9660, RawGzip };
+// `encryption`: "zipcrypt" or "aes256" (ZIP only), used when `password` is set.
+bool writeArchive(const std::filesystem::path& file, ArchiveFormat format, const std::vector<ArchiveMember>& members,
+                  const std::string& password = {}, const std::string& encryption = "zipcrypt");
+std::vector<std::uint8_t> readBytes(const std::filesystem::path& file);
+
 // Strips the 128-byte preamble, "DICM" and the File Meta group, producing a
 // raw implicit-VR dataset as written by some old modalities.
 bool stripPart10Header(const std::filesystem::path& in, const std::filesystem::path& out);

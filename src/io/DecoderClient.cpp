@@ -22,6 +22,7 @@ std::mutex g_pathMutex;
 
 constexpr int kParseTimeoutMs = 30'000;
 constexpr int kDecodeTimeoutMs = 180'000;
+constexpr int kExtractTimeoutMs = 4 * 60 * 60 * 1000;  // large exams on slow disks; cancellable
 
 const char* kCrashMessage =
     "O decodificador isolado encerrou inesperadamente ao processar este arquivo; ele pode estar corrompido ou "
@@ -46,7 +47,8 @@ public:
     // Sends one request and returns the response payload, or nullopt when
     // the worker died, timed out or violated the protocol.
     std::optional<std::vector<std::uint8_t>> roundTrip(const std::vector<std::uint8_t>& request, int timeoutMs,
-                                                       bool* timedOut) {
+                                                       bool* timedOut, const std::atomic<bool>* cancel = nullptr) {
+        cancel_ = cancel;
         if (!ensureStarted()) {
             return std::nullopt;
         }
@@ -121,13 +123,21 @@ private:
                 if (proc_->state() != QProcess::Running && proc_->bytesAvailable() == 0) {
                     return false;
                 }
-                if (!proc_->waitForReadyRead(static_cast<int>(std::max<qint64>(1, deadline.remainingTime())))) {
+                if (cancel_ != nullptr && cancel_->load()) {
+                    return false;  // the caller gave up: the worker is killed by fail()
+                }
+                // Wait in short slices so that a cancellation is noticed quickly.
+                const qint64 slice = cancel_ != nullptr ? std::min<qint64>(250, deadline.remainingTime())
+                                                        : deadline.remainingTime();
+                if (!proc_->waitForReadyRead(static_cast<int>(std::max<qint64>(1, slice)))) {
                     if (deadline.hasExpired()) {
                         *timedOut = true;
-                    }
-                    if (proc_->bytesAvailable() == 0) {
                         return false;
                     }
+                    if (proc_->state() != QProcess::Running && proc_->bytesAvailable() == 0) {
+                        return false;
+                    }
+                    continue;
                 }
             }
             out.append(proc_->read(n - out.size()));
@@ -144,6 +154,7 @@ private:
     }
 
     std::unique_ptr<QProcess> proc_;
+    const std::atomic<bool>* cancel_ = nullptr;
 };
 
 thread_local std::unique_ptr<Worker> t_worker;
@@ -229,6 +240,30 @@ DecodeResult DecoderClient::decode(const std::string& utf8Path) {
         logWarning("decoder", "Falha do decodificador isolado durante decodificação de pixels.");
     }
     return d;
+}
+
+ExtractResult DecoderClient::extract(const ExtractRequest& request, const std::atomic<bool>* cancel) {
+    if (!g_isolation) {
+        return extractArchive(utf8ToPath(request.archive), utf8ToPath(request.destDir), request.displayPrefix,
+                              request.password, {}, cancel);
+    }
+    bool timedOut = false;
+    const auto response = threadWorker().roundTrip(makeExtractRequest(request), kExtractTimeoutMs, &timedOut, cancel);
+    ExtractResult r;
+    if (cancel != nullptr && cancel->load()) {
+        r.status = ExtractStatus::Cancelled;
+        r.message = "Extração cancelada.";
+        return r;
+    }
+    if (!response || !decodeExtractResult(*response, r, request.destDir)) {
+        r = {};
+        r.status = ExtractStatus::Corrupt;
+        r.message = timedOut ? std::string("Tempo esgotado ao extrair o arquivo compactado.")
+                             : std::string("O extrator isolado encerrou inesperadamente; o arquivo compactado pode "
+                                           "estar danificado.");
+        logWarning("decoder", "Falha do processo isolado durante a extração de arquivo compactado.");
+    }
+    return r;
 }
 
 void DecoderClient::releaseThreadWorker() { t_worker.reset(); }

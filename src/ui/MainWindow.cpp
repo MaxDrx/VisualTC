@@ -10,6 +10,7 @@
 #include <QHeaderView>
 #include <QInputDialog>
 #include <QLabel>
+#include <QLineEdit>
 #include <QLocale>
 #include <QMenu>
 #include <QMenuBar>
@@ -32,6 +33,7 @@
 #include "dicom/DicomParser.h"
 #include "export/ImageExporter.h"
 #include "io/DecoderClient.h"
+#include "io/ExtractionArea.h"
 #include "io/FrameProvider.h"
 #include "io/ImportTask.h"
 #include "io/ThumbnailProvider.h"
@@ -72,6 +74,20 @@ MainWindow::MainWindow() {
     frames_ = new FrameProvider(cache, threads, this);
     thumbs_ = new ThumbnailProvider(frames_, 96, this);
     import_ = new ImportTask(this);
+    extraction_ = std::make_unique<ExtractionArea>();
+    import_->setPasswordProvider([this](const QString& archive, bool retry) -> std::optional<QString> {
+        bool ok = false;
+        const QString text =
+            retry ? tr("Senha incorreta. Digite novamente a senha de %1:").arg(archive)
+                  : tr("O arquivo compactado %1 está protegido por senha.\nDigite a senha para abrir o exame:")
+                        .arg(archive);
+        const QString pw = QInputDialog::getText(this, tr("Arquivo protegido por senha"), text, QLineEdit::Password,
+                                                 QString(), &ok);
+        if (!ok) {
+            return std::nullopt;
+        }
+        return pw;
+    });
     grid_ = new ViewerGrid(annotations_, this);
     setCentralWidget(grid_);
 
@@ -116,6 +132,7 @@ MainWindow::MainWindow() {
         resize(1400, 880);
     }
     restoreState(s.windowState());
+    updateEmptyHint();
     setTool(Tool::WindowLevel);
     updateActionStates();
     logInfo("app", "Janela principal criada.");
@@ -132,6 +149,7 @@ MainWindow::~MainWindow() {
     delete grid_;
     grid_ = nullptr;
     frames_->shutdown();
+    extraction_.reset();  // deletes the images extracted from compressed exams
 }
 
 // ------------------------------------------------------------------ actions
@@ -150,7 +168,10 @@ void MainWindow::createActions() {
         return a;
     };
 
-    actOpenFiles_ = make(tr("Abrir arquivos…"), "open-file", QKeySequence::Open, [this] { openFiles(); });
+    actOpenFiles_ = make(tr("Abrir arquivos…"), "open-file", QKeySequence::Open, [this] { openFiles(); },
+                         tr("Abrir arquivos DICOM ou exames compactados (ZIP, RAR, 7z, TAR, GZ, ISO)  (Ctrl+O)"));
+    actOpenArchive_ = make(tr("Abrir exame compactado (ZIP, RAR, 7z)…"), "open-file", QKeySequence(),
+                           [this] { openArchive(); });
     actOpenFolder_ = make(tr("Abrir pasta…"), "open-folder", QKeySequence(tr("Ctrl+Shift+O")), [this] { openFolder(); });
     actStudies_ = make(tr("Estudos"), "info", QKeySequence(tr("F2")), [this] {
         browserDock_->setVisible(!browserDock_->isVisible());
@@ -339,6 +360,7 @@ void MainWindow::createMenus() {
     auto* file = menuBar()->addMenu(tr("&Arquivo"));
     file->addAction(actOpenFiles_);
     file->addAction(actOpenFolder_);
+    file->addAction(actOpenArchive_);
     file->addSeparator();
     file->addAction(actExport_);
     file->addAction(actCapture_);
@@ -637,10 +659,28 @@ void MainWindow::createStatusBar() {
 
 // --------------------------------------------------------------- import
 
+namespace {
+// DICOM files often have no extension, so "all files" stays the default;
+// archives are recognised by content anyway, the filter only helps browsing.
+const char* kArchiveFilter = QT_TRANSLATE_NOOP("MainWindow",
+                                               "Exames compactados (*.zip *.rar *.7z *.tar *.tgz *.gz *.bz2 *.xz "
+                                               "*.zst *.iso *.ZIP *.RAR *.7Z *.ISO)");
+}  // namespace
+
 void MainWindow::openFiles() {
-    const QStringList files = QFileDialog::getOpenFileNames(this, tr("Abrir arquivos DICOM"),
-                                                            AppSettings::instance().lastOpenDirectory(),
-                                                            tr("Todos os arquivos (*)"));
+    const QStringList files = QFileDialog::getOpenFileNames(
+        this, tr("Abrir arquivos DICOM ou exames compactados"), AppSettings::instance().lastOpenDirectory(),
+        tr("Todos os arquivos (*)") + ";;" + tr(kArchiveFilter));
+    if (!files.isEmpty()) {
+        AppSettings::instance().setLastOpenDirectory(QFileInfo(files.front()).absolutePath());
+        importPaths(files);
+    }
+}
+
+void MainWindow::openArchive() {
+    const QStringList files = QFileDialog::getOpenFileNames(
+        this, tr("Abrir exame compactado"), AppSettings::instance().lastOpenDirectory(),
+        tr(kArchiveFilter) + ";;" + tr("Todos os arquivos (*)"));
     if (!files.isEmpty()) {
         AppSettings::instance().setLastOpenDirectory(QFileInfo(files.front()).absolutePath());
         importPaths(files);
@@ -668,10 +708,17 @@ void MainWindow::importPaths(const QStringList& paths) {
     progress_->show();
     cancelButton_->show();
     infoLabel_->setText(tr("Procurando arquivos DICOM…"));
-    import_->start(paths);
+    const std::filesystem::path extractRoot =
+        extraction_ && extraction_->valid() ? extraction_->newImportDir() : std::filesystem::path();
+    import_->start(paths, extractRoot);
 }
 
-void MainWindow::onImportProgress(int processed, int total, int found) {
+void MainWindow::onImportProgress(int processed, int total, int found, const QString& archive) {
+    if (!archive.isEmpty()) {
+        progress_->setRange(0, 0);  // busy indicator while the archive is expanded
+        infoLabel_->setText(tr("Extraindo %1…").arg(archive));
+        return;
+    }
     progress_->setRange(0, std::max(1, total));
     progress_->setValue(processed);
     infoLabel_->setText(tr("Lendo %1 de %2 arquivos · %3 imagens").arg(processed).arg(total).arg(found));
@@ -687,12 +734,17 @@ void MainWindow::onImportFinished() {
     }
     const ScanResult& r = import_->result();
     importIssues_.insert(importIssues_.end(), r.issues.begin(), r.issues.end());
+    displayNames_.insert(r.displayNames.begin(), r.displayNames.end());
     const std::size_t added = db_.addInstances(r.instances);
     browser_->setDatabase(db_);
+    updateEmptyHint();
     for (const auto& s : db_.allSeries()) {
         thumbs_->request(s);
     }
     QString msg = tr("%1 imagens importadas em %2 séries.").arg(added).arg(db_.allSeries().size());
+    if (r.archivesOpened > 0) {
+        msg += " " + tr("%n arquivo(s) compactado(s) aberto(s).", "", static_cast<int>(r.archivesOpened));
+    }
     if (r.nonDicomFiles > 0) {
         msg += " " + tr("%1 arquivos não-DICOM ignorados.").arg(r.nonDicomFiles);
     }
@@ -746,6 +798,15 @@ void MainWindow::onImportFinished() {
     }
 }
 
+void MainWindow::updateEmptyHint() {
+    if (db_.allSeries().empty()) {
+        grid_->setEmptyHint(tr("Para abrir um exame, arraste para cá a pasta do CD/pendrive ou o arquivo "
+                               "compactado (ZIP, RAR, 7z) — ou use Abrir / Pasta na barra de ferramentas."));
+    } else {
+        grid_->setEmptyHint(QString());  // default: drag a series from the list
+    }
+}
+
 void MainWindow::showImportIssues() {
     QDialog dlg(this);
     dlg.setWindowTitle(tr("Problemas de importação"));
@@ -773,13 +834,18 @@ void MainWindow::closeStudies() {
     import_->cancel();
     discardImport_ = import_->running();
     importIssues_.clear();
+    displayNames_.clear();
     grid_->clearAll();
     annotations_->clearAll();
     annotations_->undoStack()->clear();
     db_.clear();
     browser_->setDatabase(db_);
+    updateEmptyHint();
     thumbs_->clear();
     frames_->clear();
+    if (extraction_ && !import_->running()) {
+        extraction_->clear();  // images extracted from compressed exams
+    }
     actMpr_->setChecked(false);
     infoLabel_->clear();
     updateActionStates();
@@ -1126,7 +1192,10 @@ void MainWindow::showDicomInfo(const QString& seriesId) {
     if (!series) {
         return;
     }
-    DicomInfoDialog dlg(series, frame, this);
+    DicomInfoDialog dlg(series, frame, this, [this](const std::string& path) {
+        const auto it = displayNames_.find(path);
+        return it != displayNames_.end() ? it->second : path;
+    });
     dlg.exec();
 }
 

@@ -43,6 +43,7 @@ public:
     void setTool(Tool tool);
     void setOverlaysVisible(bool on);
     void setSmooth(bool on);
+    void setEmptyHint(const QString& text);
     void clearAll();
 
     // MPR

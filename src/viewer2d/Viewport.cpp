@@ -352,6 +352,11 @@ void Viewport::setActive(bool on) {
     }
 }
 
+void Viewport::setEmptyHint(const QString& text) {
+    emptyHint_ = text;
+    update();
+}
+
 void Viewport::setShowActiveFrame(bool on) {
     showActiveFrame_ = on;
     update();
@@ -613,8 +618,9 @@ void Viewport::paintContent(QPainter& p, const QSize& size, bool overlays, bool 
     if (!source_) {
         if (interactive) {
             p.setPen(QColor(0x6A, 0x6A, 0x6A));
-            p.drawText(QRect(QPoint(0, 0), size), Qt::AlignCenter,
-                       tr("Arraste uma série para cá\nou dê um duplo clique em uma série"));
+            p.drawText(QRect(QPoint(0, 0), size).adjusted(12, 0, -12, 0), Qt::AlignCenter | Qt::TextWordWrap,
+                       emptyHint_.isEmpty() ? tr("Arraste uma série para cá\nou dê um duplo clique em uma série")
+                                            : emptyHint_);
         }
         if (interactive && active_ && showActiveFrame_) {
             p.setPen(QPen(Theme::colors().accent, 1));

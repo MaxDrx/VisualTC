@@ -1,5 +1,7 @@
 #include "dicom/WorkerProtocol.h"
 
+#include "core/PathUtil.h"
+
 #include <cmath>
 #include <cstring>
 #include <memory>
@@ -376,13 +378,31 @@ std::vector<std::uint8_t> makeRequest(WorkerOp op, const std::string& utf8Path) 
     return std::move(w.buffer());
 }
 
-bool readRequest(const std::vector<std::uint8_t>& msg, WorkerOp& op, std::string& utf8Path) {
+std::vector<std::uint8_t> makeExtractRequest(const ExtractRequest& request) {
+    ByteWriter w;
+    w.u8(static_cast<std::uint8_t>(WorkerOp::Extract));
+    w.str(request.archive);
+    w.str(request.destDir);
+    w.str(request.displayPrefix);
+    w.str(request.password);
+    return std::move(w.buffer());
+}
+
+bool readRequest(const std::vector<std::uint8_t>& msg, WorkerOp& op, std::string& utf8Path, ExtractRequest* extract) {
     ByteReader r(msg.data(), msg.size());
     std::uint8_t o = 0;
     if (!r.u8(o) || !r.str(utf8Path, 1u << 16)) {
         return false;
     }
     op = static_cast<WorkerOp>(o);
+    if (op == WorkerOp::Extract) {
+        if (extract == nullptr) {
+            return false;
+        }
+        extract->archive = utf8Path;
+        return r.str(extract->destDir, 1u << 16) && r.str(extract->displayPrefix, 1u << 16) &&
+               r.str(extract->password, 4096) && r.remaining() == 0 && !extract->destDir.empty();
+    }
     return true;
 }
 
@@ -467,6 +487,55 @@ bool decodeDecodeResult(const std::vector<std::uint8_t>& msg, DecodeResult& res,
             return false;
         }
         res.frames.push_back(std::move(f));
+    }
+    return r.remaining() == 0;
+}
+
+}  // namespace vtc
+
+// ------------------------------------------------------------- extraction ---
+
+namespace vtc {
+
+std::vector<std::uint8_t> encodeExtractResult(const ExtractResult& res) {
+    ByteWriter w;
+    w.u8(static_cast<std::uint8_t>(res.status));
+    w.str(res.message);
+    w.u64(res.entries);
+    w.u64(res.skippedNonDicom);
+    w.u64(res.bytesWritten);
+    w.u32(static_cast<std::uint32_t>(res.files.size()));
+    for (const auto& f : res.files) {
+        w.str(f.path);
+        w.str(f.displayName);
+    }
+    return std::move(w.buffer());
+}
+
+bool decodeExtractResult(const std::vector<std::uint8_t>& msg, ExtractResult& res, const std::string& destDir) {
+    ByteReader r(msg.data(), msg.size());
+    std::uint8_t status = 0;
+    std::uint32_t n = 0;
+    if (!r.u8(status) || status > static_cast<std::uint8_t>(ExtractStatus::Cancelled) || !r.str(res.message, 4096) ||
+        !r.u64(res.entries) || !r.u64(res.skippedNonDicom) || !r.u64(res.bytesWritten) || !r.u32(n) ||
+        n > 2'000'000) {
+        return false;
+    }
+    res.status = static_cast<ExtractStatus>(status);
+    const std::filesystem::path root = utf8ToPath(destDir).lexically_normal();
+    res.files.clear();
+    res.files.reserve(n);
+    for (std::uint32_t k = 0; k < n; ++k) {
+        ExtractedFile f;
+        if (!r.str(f.path, 1u << 16) || !r.str(f.displayName, 1u << 16)) {
+            return false;
+        }
+        const std::filesystem::path p = utf8ToPath(f.path).lexically_normal();
+        const std::filesystem::path rel = p.lexically_relative(root);
+        if (rel.empty() || rel.is_absolute() || rel == "." || *rel.begin() == "..") {
+            return false;
+        }
+        res.files.push_back(std::move(f));
     }
     return r.remaining() == 0;
 }

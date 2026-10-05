@@ -422,7 +422,13 @@ bool looksLikeDicom(const std::filesystem::path& file) {
     }
     std::array<unsigned char, 132> buf{};
     in.read(reinterpret_cast<char*>(buf.data()), static_cast<std::streamsize>(buf.size()));
-    const auto got = in.gcount();
+    return looksLikeDicomBytes(buf.data(), static_cast<std::size_t>(std::max<std::streamsize>(0, in.gcount())));
+}
+
+bool looksLikeDicomBytes(const unsigned char* buf, std::size_t got) {
+    if (buf == nullptr) {
+        return false;
+    }
     if (got >= 132 && buf[128] == 'D' && buf[129] == 'I' && buf[130] == 'C' && buf[131] == 'M') {
         return true;
     }

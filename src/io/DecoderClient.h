@@ -4,8 +4,11 @@
 #include <filesystem>
 #include <string>
 
+#include <atomic>
+
 #include "dicom/DicomDecoder.h"
 #include "dicom/DicomParser.h"
+#include "dicom/WorkerProtocol.h"
 
 namespace vtc {
 
@@ -27,6 +30,9 @@ public:
 
     static ParseResult parse(const std::filesystem::path& file);
     static DecodeResult decode(const std::string& utf8Path);
+    // Extracts the DICOM members of a compressed exam (see ArchiveExtractor).
+    // Cancelling kills the worker doing the extraction.
+    static ExtractResult extract(const ExtractRequest& request, const std::atomic<bool>* cancel = nullptr);
 
     // Releases the calling thread's worker (call before the thread ends).
     static void releaseThreadWorker();

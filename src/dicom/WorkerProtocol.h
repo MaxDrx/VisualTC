@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 
+#include "archive/ArchiveExtractor.h"
 #include "dicom/DicomDecoder.h"
 #include "dicom/DicomParser.h"
 
@@ -19,7 +20,7 @@ namespace vtc {
 // byte is the operation. All readers validate every length against hard
 // limits, because a compromised worker must not be able to make the viewer
 // allocate or read out of bounds either.
-enum class WorkerOp : std::uint8_t { Parse = 1, Decode = 2, Ping = 3, CrashForTest = 99 };
+enum class WorkerOp : std::uint8_t { Parse = 1, Decode = 2, Ping = 3, Extract = 4, CrashForTest = 99 };
 
 constexpr std::uint64_t kMaxWorkerMessage = 6ull * 1024ull * 1024ull * 1024ull;
 
@@ -64,13 +65,30 @@ private:
 
 // Requests
 std::vector<std::uint8_t> makeRequest(WorkerOp op, const std::string& utf8Path);
-bool readRequest(const std::vector<std::uint8_t>& msg, WorkerOp& op, std::string& utf8Path);
+
+// Extraction of a compressed exam into a private folder chosen by the viewer.
+struct ExtractRequest {
+    std::string archive;        // UTF-8 path of the archive
+    std::string destDir;        // UTF-8 path of the (empty) destination folder
+    std::string displayPrefix;  // e.g. "exame.zip › "
+    std::string password;       // empty: none
+};
+std::vector<std::uint8_t> makeExtractRequest(const ExtractRequest& request);
+
+// Reads any request. For WorkerOp::Extract the extra fields go to `extract`
+// (required for that operation).
+bool readRequest(const std::vector<std::uint8_t>& msg, WorkerOp& op, std::string& utf8Path,
+                 ExtractRequest* extract = nullptr);
 
 // Responses
 std::vector<std::uint8_t> encodeParseResult(const ParseResult& r);
 bool decodeParseResult(const std::vector<std::uint8_t>& msg, ParseResult& r, const ParseLimits& limits = {});
 std::vector<std::uint8_t> encodeDecodeResult(const DecodeResult& r);
 bool decodeDecodeResult(const std::vector<std::uint8_t>& msg, DecodeResult& r, const ParseLimits& limits = {});
+std::vector<std::uint8_t> encodeExtractResult(const ExtractResult& r);
+// Every extracted path must lie inside `destDir` (a compromised worker must
+// not be able to point the viewer at other files).
+bool decodeExtractResult(const std::vector<std::uint8_t>& msg, ExtractResult& r, const std::string& destDir);
 
 // Instance serialization (also usable for caches).
 void writeInstance(ByteWriter& w, const InstanceInfo& i);

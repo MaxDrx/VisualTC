@@ -1,6 +1,8 @@
 #pragma once
 
 #include <QDialog>
+#include <functional>
+#include <string>
 
 #include "dicom/DicomSeries.h"
 
@@ -11,7 +13,10 @@ namespace vtc {
 class DicomInfoDialog : public QDialog {
     Q_OBJECT
 public:
-    DicomInfoDialog(const SeriesPtr& series, int frameIndex, QWidget* parent = nullptr);
+    // `displayPath` maps a file path to what the user knows (e.g. the member
+    // name inside a compressed exam); identity when empty.
+    DicomInfoDialog(const SeriesPtr& series, int frameIndex, QWidget* parent = nullptr,
+                    const std::function<std::string(const std::string&)>& displayPath = {});
 };
 
 }  // namespace vtc

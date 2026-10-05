@@ -36,6 +36,8 @@ struct ParseResult {
 // Cheap content sniffing: "DICM" magic at offset 128, or a plausible raw
 // little-endian dataset start (group 0x0002/0x0008). Does not trust extension.
 bool looksLikeDicom(const std::filesystem::path& file);
+// Same test on the first bytes of a file (at least 132 for the Part 10 case).
+bool looksLikeDicomBytes(const unsigned char* data, std::size_t size);
 
 // Reads all header attributes up to (but excluding) Pixel Data.
 ParseResult parseDicomHeader(const std::filesystem::path& file, const ParseLimits& limits = {});

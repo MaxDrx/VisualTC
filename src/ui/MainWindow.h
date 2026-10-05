@@ -23,6 +23,7 @@ class QToolButton;
 namespace vtc {
 
 class AnnotationStore;
+class ExtractionArea;
 class FrameProvider;
 class ImportTask;
 class SeriesBrowser;
@@ -66,10 +67,12 @@ private:
 
     void openFiles();
     void openFolder();
+    void openArchive();
     void closeStudies();
-    void onImportProgress(int processed, int total, int found);
+    void onImportProgress(int processed, int total, int found, const QString& archive);
     void onImportFinished();
     void showImportIssues();
+    void updateEmptyHint();
     void openSeries(const QString& seriesId, Viewport* target = nullptr);
     void startMpr(const QString& seriesId = QString());
     void toggleMpr(bool on);
@@ -108,6 +111,7 @@ private:
     QActionGroup* toolGroup_ = nullptr;
     QAction* actOpenFiles_ = nullptr;
     QAction* actOpenFolder_ = nullptr;
+    QAction* actOpenArchive_ = nullptr;
     QAction* actStudies_ = nullptr;
     QAction* actExport_ = nullptr;
     QAction* actCapture_ = nullptr;
@@ -146,6 +150,9 @@ private:
     // Import bookkeeping: problems of every import of this session, and a
     // flag to drop the result of an import interrupted by "Fechar estudos".
     std::vector<ScanIssue> importIssues_;
+    // Extracted copies of archive members -> "exame.zip › pasta/arquivo".
+    std::map<std::string, std::string> displayNames_;
+    std::unique_ptr<ExtractionArea> extraction_;
     bool discardImport_ = false;
     QAction* issuesAction_ = nullptr;
 

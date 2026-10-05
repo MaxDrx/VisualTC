@@ -249,6 +249,12 @@ void ViewerGrid::setSmooth(bool on) {
     }
 }
 
+void ViewerGrid::setEmptyHint(const QString& text) {
+    for (auto* vp : viewports_) {
+        vp->setEmptyHint(text);
+    }
+}
+
 void ViewerGrid::clearAll() {
     exitMpr();
     for (auto* vp : viewports_) {

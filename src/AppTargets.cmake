@@ -8,6 +8,7 @@ set(VISUALTC_UI_SOURCES
     app/AppSettings.cpp
     app/Theme.cpp
     io/DecoderClient.cpp
+    io/ExtractionArea.cpp
     io/FrameProvider.cpp
     io/ImportTask.cpp
     io/ThumbnailProvider.cpp

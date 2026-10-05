@@ -4,21 +4,32 @@
 #include <cstddef>
 #include <filesystem>
 #include <functional>
+#include <map>
 #include <string>
 #include <vector>
 
+#include "archive/ArchiveExtractor.h"
 #include "dicom/DicomParser.h"
 #include "dicom/DicomTypes.h"
 
 namespace vtc {
 
 using HeaderParser = std::function<ParseResult(const std::filesystem::path&)>;
+// Expands one compressed exam into `destDir` (see ArchiveExtractor).
+using ArchiveExpander = std::function<ExtractResult(const std::filesystem::path& archive,
+                                                    const std::filesystem::path& destDir,
+                                                    const std::string& displayPrefix)>;
 
 struct ScanOptions {
     ParseLimits limits;
     HeaderParser parser;  // empty = parseDicomHeader in-process
     std::size_t maxFiles = 500000;  // stop walking after this many files
     unsigned threads = 0;           // 0 = automatic
+    // Compressed exams (ZIP, 7z, RAR, TAR, GZ, ISO) found among the inputs
+    // are expanded with `expander` into numbered folders under `extractRoot`
+    // and their images scanned. Empty expander: archives are ignored.
+    ArchiveExpander expander;
+    std::filesystem::path extractRoot;
 };
 
 struct ScanIssue {
@@ -31,6 +42,7 @@ struct ScanProgress {
     std::size_t filesFound = 0;     // files discovered while walking
     std::size_t filesProcessed = 0;
     std::size_t dicomImages = 0;
+    std::string archive;            // archive being expanded (display name), empty otherwise
 };
 
 struct ScanResult {
@@ -41,6 +53,9 @@ struct ScanResult {
     std::size_t nonImageObjects = 0;
     bool cancelled = false;
     bool truncated = false;  // maxFiles reached
+    std::size_t archivesOpened = 0;
+    // Extracted copy (UTF-8 path) -> name inside the archive, for messages.
+    std::map<std::string, std::string> displayNames;
 };
 
 using ScanProgressCallback = std::function<void(const ScanProgress&)>;

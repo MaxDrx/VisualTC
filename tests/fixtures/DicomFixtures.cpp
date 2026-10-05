@@ -8,6 +8,8 @@
 #include <random>
 #include <sstream>
 
+#include <archive.h>
+#include <archive_entry.h>
 #include <gdcmDataElement.h>
 #include <gdcmDataSet.h>
 #include <gdcmFileMetaInformation.h>
@@ -339,6 +341,87 @@ bool convertToFloatPixelData(const std::filesystem::path& file) {
     std::error_code ec;
     std::filesystem::rename(tmp, file, ec);
     return !ec;
+}
+
+std::vector<std::uint8_t> readBytes(const std::filesystem::path& file) {
+    std::ifstream in(file, std::ios::binary);
+    return {std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>()};
+}
+
+bool writeArchive(const std::filesystem::path& file, ArchiveFormat format, const std::vector<ArchiveMember>& members,
+                  const std::string& password, const std::string& encryption) {
+    struct archive* a = archive_write_new();
+    if (a == nullptr) {
+        return false;
+    }
+    int rc = ARCHIVE_OK;
+    switch (format) {
+        case ArchiveFormat::Zip: rc = archive_write_set_format_zip(a); break;
+        case ArchiveFormat::ZipStored:
+            rc = archive_write_set_format_zip(a);
+            if (rc == ARCHIVE_OK) {
+                rc = archive_write_set_options(a, "zip:compression=store");
+            }
+            break;
+        case ArchiveFormat::SevenZip: rc = archive_write_set_format_7zip(a); break;
+        case ArchiveFormat::TarGz:
+            rc = archive_write_set_format_pax_restricted(a);
+            archive_write_add_filter_gzip(a);
+            break;
+        case ArchiveFormat::TarBz2:
+            rc = archive_write_set_format_pax_restricted(a);
+            archive_write_add_filter_bzip2(a);
+            break;
+        case ArchiveFormat::TarXz:
+            rc = archive_write_set_format_pax_restricted(a);
+            archive_write_add_filter_xz(a);
+            break;
+        case ArchiveFormat::TarZstd:
+            rc = archive_write_set_format_pax_restricted(a);
+            archive_write_add_filter_zstd(a);
+            break;
+        case ArchiveFormat::Iso9660: rc = archive_write_set_format_iso9660(a); break;
+        case ArchiveFormat::RawGzip:
+            rc = archive_write_set_format_raw(a);
+            archive_write_add_filter_gzip(a);
+            break;
+    }
+    if (rc == ARCHIVE_OK && !password.empty()) {
+        rc = archive_write_set_options(a, ("zip:encryption=" + encryption).c_str());
+        if (rc == ARCHIVE_OK) {
+            rc = archive_write_set_passphrase(a, password.c_str());
+        }
+    }
+    if (rc != ARCHIVE_OK || archive_write_open_filename(a, file.string().c_str()) != ARCHIVE_OK) {
+        archive_write_free(a);
+        return false;
+    }
+    bool ok = true;
+    for (const auto& m : members) {
+        struct archive_entry* e = archive_entry_new();
+        archive_entry_set_pathname(e, m.name.c_str());
+        archive_entry_set_mtime(e, 1767225600, 0);
+        if (!m.symlinkTarget.empty()) {
+            archive_entry_set_filetype(e, AE_IFLNK);
+            archive_entry_set_symlink(e, m.symlinkTarget.c_str());
+            archive_entry_set_perm(e, 0777);
+            archive_entry_set_size(e, 0);
+        } else {
+            archive_entry_set_filetype(e, AE_IFREG);
+            archive_entry_set_perm(e, 0644);
+            archive_entry_set_size(e, static_cast<la_int64_t>(m.data.size()));
+        }
+        if (archive_write_header(a, e) != ARCHIVE_OK) {
+            ok = false;
+        } else if (m.symlinkTarget.empty() && !m.data.empty() &&
+                   archive_write_data(a, m.data.data(), m.data.size()) != static_cast<la_ssize_t>(m.data.size())) {
+            ok = false;
+        }
+        archive_entry_free(e);
+    }
+    ok = archive_write_close(a) == ARCHIVE_OK && ok;
+    archive_write_free(a);
+    return ok;
 }
 
 bool stripPart10Header(const std::filesystem::path& in, const std::filesystem::path& out) {

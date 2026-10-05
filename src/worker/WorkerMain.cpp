@@ -1,4 +1,4 @@
-// visualtc-worker: isolated DICOM parser/decoder process.
+// visualtc-worker: isolated DICOM parser/decoder and archive extractor process.
 //
 // Reads framed requests from stdin and writes framed responses to stdout
 // (see dicom/WorkerProtocol.h). It never writes anything else to stdout and
@@ -126,7 +126,8 @@ int main() {
         }
         vtc::WorkerOp op{};
         std::string path;
-        if (!vtc::readRequest(msg, op, path)) {
+        vtc::ExtractRequest extract;
+        if (!vtc::readRequest(msg, op, path, &extract)) {
             return 3;
         }
         std::vector<std::uint8_t> response;
@@ -149,6 +150,11 @@ int main() {
                 case vtc::WorkerOp::Ping:
                     response = {1};
                     break;
+                case vtc::WorkerOp::Extract:
+                    response = vtc::encodeExtractResult(vtc::extractArchive(
+                        vtc::utf8ToPath(extract.archive), vtc::utf8ToPath(extract.destDir), extract.displayPrefix,
+                        extract.password));
+                    break;
                 case vtc::WorkerOp::CrashForTest:
                     std::abort();
                 default:
@@ -157,9 +163,16 @@ int main() {
         } catch (...) {
             vtc::DecodeResult failed;
             failed.error = "Erro inesperado no decodificador.";
-            response = op == vtc::WorkerOp::Parse
-                           ? vtc::encodeParseResult({vtc::ParseStatus::Malformed, nullptr, failed.error})
-                           : vtc::encodeDecodeResult(failed);
+            if (op == vtc::WorkerOp::Parse) {
+                response = vtc::encodeParseResult({vtc::ParseStatus::Malformed, nullptr, failed.error});
+            } else if (op == vtc::WorkerOp::Extract) {
+                vtc::ExtractResult er;
+                er.status = vtc::ExtractStatus::Corrupt;
+                er.message = "Erro inesperado ao extrair o arquivo compactado.";
+                response = vtc::encodeExtractResult(er);
+            } else {
+                response = vtc::encodeDecodeResult(failed);
+            }
         }
         if (!writeMessage(out, response)) {
             return 5;

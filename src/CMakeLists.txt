@@ -24,13 +24,14 @@ add_library(visualtc_core STATIC
     mpr/Reslicer.cpp
     mpr/MprGeometry.cpp
     synchronization/SpatialSync.cpp
+    archive/ArchiveExtractor.cpp
 )
 add_library(VisualTC::core ALIAS visualtc_core)
 target_include_directories(visualtc_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_include_directories(visualtc_core SYSTEM PRIVATE ${GDCM_INCLUDE_DIRS})
 target_link_libraries(visualtc_core
     PUBLIC Threads::Threads VisualTC::options
-    PRIVATE gdcmMSFF)
+    PRIVATE gdcmMSFF LibArchive::LibArchive)
 set_target_properties(visualtc_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 # ---------------------------------------------------------------------------

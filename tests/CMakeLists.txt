@@ -16,7 +16,7 @@ include(Catch)
 add_library(visualtc_fixtures STATIC fixtures/DicomFixtures.cpp)
 target_include_directories(visualtc_fixtures PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_include_directories(visualtc_fixtures SYSTEM PRIVATE ${GDCM_INCLUDE_DIRS})
-target_link_libraries(visualtc_fixtures PUBLIC VisualTC::core PRIVATE gdcmMSFF)
+target_link_libraries(visualtc_fixtures PUBLIC VisualTC::core PRIVATE gdcmMSFF LibArchive::LibArchive)
 
 add_executable(visualtc_tests
     unit/test_textutil.cpp
@@ -29,6 +29,7 @@ add_executable(visualtc_tests
     unit/test_cache.cpp
     unit/test_worker_protocol.cpp
     unit/test_sync.cpp
+    unit/test_archive.cpp
 )
 target_link_libraries(visualtc_tests PRIVATE visualtc_fixtures VisualTC::core Catch2::Catch2WithMain)
 if(NOT MSVC)
