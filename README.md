@@ -6,9 +6,22 @@ o usuário abre (ou arrasta) a pasta do exame, o VisualTC encontra os arquivos
 DICOM, organiza paciente, estudos e séries e exibe as imagens em segundos.
 Não há servidor, PACS ou configuração.
 
+## ⬇️ Baixar
+
+| Seu computador | Baixe | Instalação |
+|---|---|---|
+| **Windows 10 / 11** | [**VisualTC-Setup-x64.exe**](../../releases/latest/download/VisualTC-Setup-x64.exe) | clique duas vezes › **Avançar** › **Concluir** (sem senha de administrador) |
+| **Mac** — chip Apple (M1–M4) **ou Intel** | [**VisualTC-macOS.dmg**](../../releases/latest/download/VisualTC-macOS.dmg) | clique duas vezes e arraste o VisualTC para **Aplicativos** |
+| **Ubuntu / Debian / Mint** | [**visualtc_amd64.deb**](../../releases/latest/download/visualtc_amd64.deb) | clique duas vezes › **Instalar** |
+| **Outras distribuições Linux** | [**VisualTC-x86_64.AppImage**](../../releases/latest/download/VisualTC-x86_64.AppImage) | botão direito › Propriedades › *Permitir executar como programa* › clique duas vezes |
+
+Os links apontam sempre para a versão mais recente. Há também uma página de
+download em português, com detecção automática do sistema (`site/`, publicada
+no GitHub Pages — veja [docs/BUILD.md](docs/BUILD.md#publicar-uma-versão)).
+
 ![VisualTC — MPR com crosshair](docs/screenshots/mpr.png)
 
-> **Aviso:** esta versão (0.1.0) não é um dispositivo médico registrado
+> **Aviso:** esta versão (0.2.0) não é um dispositivo médico registrado
 > (ANVISA/FDA/CE). Medidas e reconstruções devem ser conferidas antes de
 > qualquer uso diagnóstico.
 
@@ -17,6 +30,8 @@ Não há servidor, PACS ou configuração.
 | Área | Recursos |
 |---|---|
 | Importação | Abrir arquivos, abrir pasta, arrastar e soltar; arquivos sem extensão e em subpastas; detecção pelo conteúdo, não pela extensão; arquivos corrompidos são relatados e nunca encerram o programa |
+| Exames compactados | **ZIP** (inclusive com senha), **RAR**, **7z**, TAR, GZ, BZ2, XZ, ZST e imagem de CD (ISO), também um dentro do outro; extraídos no processo isolado, em pasta temporária apagada ao fechar; proteção contra “bombas” de compressão e nomes maliciosos |
+| Interface | Painel de séries **recolhível** (botão « ou F2) e redimensionável até só as miniaturas, para as imagens ocuparem quase toda a tela; estado lembrado entre sessões |
 | Organização | Paciente → Estudo → Série → Imagem; ordenação **espacial** (ImagePositionPatient × normal da orientação), nunca só por InstanceNumber; separação automática de ecos, fases, clipes de US e localizadores |
 | Formatos | Explicit/Implicit VR, Big Endian, Deflate, JPEG Baseline/Extended, JPEG Lossless, JPEG-LS, **JPEG 2000**, RLE; monocromático (MONOCHROME1/2), RGB, YBR, PALETTE COLOR; multiframe; Enhanced CT/MR (functional groups) |
 | Visualização 2D | Scroll (roda, trackpad, teclado, arrasto), Window/Level interativo, presets de TC (pulmão, mediastino, abdome, fígado, osso, cérebro, subdural, AVC), presets do arquivo, VOI LUT, presets personalizados, zoom, pan, 1:1, ajuste, rotação 90°/livre, espelhamento, inversão, interpolação linear/vizinho mais próximo, cine |
@@ -38,10 +53,9 @@ cropping, CPR) estão em [docs/STATUS.md](docs/STATUS.md).
 
 | Sistema | Pacote | Situação |
 |---|---|---|
-| Ubuntu LTS x86_64 | `VisualTC-x86_64.AppImage`, `visualtc_amd64.deb` | compilado e testado (84 testes, inclusive sob ASan/UBSan); pacotes gerados no CI |
-| Windows 10/11 x64 | `VisualTC-Setup-x64.exe` (Inno Setup) | configurado no CI (GitHub Actions), ainda não executado |
-| macOS 12+ Apple Silicon (M1–M4) | `VisualTC.dmg` | configurado no CI, ainda não executado |
-| macOS 12+ Intel | `VisualTC.dmg` | configurado no CI, ainda não executado |
+| Ubuntu LTS x86_64 | `visualtc_amd64.deb`, `VisualTC-x86_64.AppImage` | compilado e testado (inclusive sob ASan/UBSan); `.deb` e AppImage gerados e executados localmente |
+| Windows 10/11 x64 | `VisualTC-Setup-x64.exe` (Inno Setup, por usuário) | configurado no CI (GitHub Actions), com teste de instalação/desinstalação silenciosa; ainda não executado |
+| macOS 12+ Apple Silicon (M1–M4) e Intel | `VisualTC-macOS.dmg` (universal) | configurado no CI (`macos-15` + `macos-15-intel`, combinados com `lipo`); ainda não executado |
 
 ## Compilação rápida
 

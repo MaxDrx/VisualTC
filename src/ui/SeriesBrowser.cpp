@@ -6,6 +6,7 @@
 #include <QMimeData>
 #include <QPainter>
 #include <QStyledItemDelegate>
+#include <algorithm>
 
 #include "app/Theme.h"
 #include "dicom/TextUtil.h"
@@ -14,8 +15,11 @@ namespace vtc {
 
 namespace {
 
-enum Role { SeriesIdRole = Qt::UserRole, KindRole, TitleRole, DetailRole, WarningRole, DisplayedRole };
+enum Role { SeriesIdRole = Qt::UserRole, KindRole, TitleRole, DetailRole, WarningRole, DisplayedRole, BadgeRole };
 constexpr int kThumb = 64;
+// Below this text width the panel was dragged narrow: show thumbnails only
+// (the details stay in the tooltip).
+constexpr int kMinTextWidth = 64;
 
 class SeriesDelegate : public QStyledItemDelegate {
 public:
@@ -41,11 +45,17 @@ public:
             QFont f = option.font;
             f.setBold(true);
             p->setFont(f);
-            p->drawText(r.adjusted(4, 2, -4, 0), Qt::AlignLeft | Qt::AlignTop, index.data(TitleRole).toString());
+            const QRect titleRect = r.adjusted(4, 2, -4, 0);
+            p->drawText(titleRect, Qt::AlignLeft | Qt::AlignTop,
+                        QFontMetrics(f).elidedText(index.data(TitleRole).toString(), Qt::ElideRight,
+                                                   titleRect.width()));
             f.setBold(false);
             p->setFont(f);
             p->setPen(c.textSecondary);
-            p->drawText(r.adjusted(4, 0, -4, -2), Qt::AlignLeft | Qt::AlignBottom, index.data(DetailRole).toString());
+            const QRect detailRect = r.adjusted(4, 0, -4, -2);
+            p->drawText(detailRect, Qt::AlignLeft | Qt::AlignBottom,
+                        QFontMetrics(f).elidedText(index.data(DetailRole).toString(), Qt::ElideRight,
+                                                   detailRect.width()));
             p->restore();
             return;
         }
@@ -54,7 +64,9 @@ public:
             p->setBrush(selected ? c.accentDim : c.panel);
             p->drawRoundedRect(r, 5, 5);
         }
-        const QRect thumbRect(r.left() + 4, r.top() + (r.height() - kThumb) / 2, kThumb, kThumb);
+        const bool compact = r.width() - kThumb - 16 < kMinTextWidth;
+        const int thumbLeft = compact ? r.left() + std::max(0, (r.width() - kThumb) / 2) : r.left() + 4;
+        const QRect thumbRect(thumbLeft, r.top() + (r.height() - kThumb) / 2, kThumb, kThumb);
         const QVariant deco = index.data(Qt::DecorationRole);
         p->fillRect(thumbRect, Qt::black);
         if (deco.canConvert<QImage>()) {
@@ -68,6 +80,11 @@ public:
             p->setPen(QPen(c.panelBorder, 1));
             p->setBrush(Qt::NoBrush);
             p->drawRect(thumbRect);
+        }
+        if (compact) {
+            paintBadges(p, option, index, thumbRect);
+            p->restore();
+            return;
         }
         const QRect text = r.adjusted(kThumb + 12, 4, -4, -4);
         QFont f = option.font;
@@ -89,6 +106,37 @@ public:
             p->drawText(text.left(), y, fm.elidedText("⚠ " + warn, Qt::ElideRight, text.width()));
         }
         p->restore();
+    }
+
+private:
+    // Thumbnails-only mode: series number on the image, ⚠ in the corner.
+    static void paintBadges(QPainter* p, const QStyleOptionViewItem& option, const QModelIndex& index,
+                            const QRect& thumb) {
+        const auto& c = Theme::colors();
+        QFont f = option.font;
+        f.setPointSizeF(std::max(7.0, f.pointSizeF() * 0.85));
+        f.setBold(true);
+        p->setFont(f);
+        const QFontMetrics fm(f);
+        const QString badge = index.data(BadgeRole).toString();
+        if (!badge.isEmpty()) {
+            const QString text = fm.elidedText(badge, Qt::ElideRight, thumb.width() - 6);
+            const QRect box(thumb.left() + 2, thumb.bottom() - fm.height() - 1, fm.horizontalAdvance(text) + 6,
+                            fm.height());
+            p->setPen(Qt::NoPen);
+            p->setBrush(QColor(0, 0, 0, 170));
+            p->drawRoundedRect(box, 3, 3);
+            p->setPen(Theme::overlayText());
+            p->drawText(box, Qt::AlignCenter, text);
+        }
+        if (!index.data(WarningRole).toString().isEmpty()) {
+            const QRect box(thumb.right() - fm.height() - 1, thumb.top() + 2, fm.height(), fm.height());
+            p->setPen(Qt::NoPen);
+            p->setBrush(QColor(0, 0, 0, 170));
+            p->drawRoundedRect(box, 3, 3);
+            p->setPen(c.warning);
+            p->drawText(box, Qt::AlignCenter, QStringLiteral("⚠"));
+        }
     }
 };
 
@@ -122,6 +170,10 @@ SeriesBrowser::SeriesBrowser(QWidget* parent) : QTreeWidget(parent) {
     setMouseTracking(true);
     setUniformRowHeights(false);
     setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
+    // The panel can be dragged down to a thumbnails-only column: rows follow
+    // the width instead of scrolling sideways.
+    setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    setMinimumWidth(0);
     // itemActivated covers double click (or single click, when that is the
     // platform convention) and Enter; also listening to itemDoubleClicked
     // would open the series twice.
@@ -169,6 +221,9 @@ void SeriesBrowser::setDatabase(const StudyDatabase& db) {
                     title += " · " + desc;
                 }
                 item->setData(0, TitleRole, title);
+                item->setData(0, BadgeRole,
+                              series->number() ? QString::number(*series->number())
+                                               : QString::fromStdString(series->modality()));
                 QString line1 = QString::fromStdString(series->modality()) + "  ·  " +
                                 tr("%n imagem(ns)", "", series->frameCount());
                 QString line2;

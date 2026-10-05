@@ -17,6 +17,7 @@ public:
     void setDatabase(const StudyDatabase& db);
     void setThumbnail(const QString& seriesId, const QImage& image);
     [[nodiscard]] QString currentSeriesId() const;
+    [[nodiscard]] int seriesCount() const { return static_cast<int>(items_.size()); }
     void markDisplayed(const QSet<QString>& seriesIds);
 
 Q_SIGNALS:

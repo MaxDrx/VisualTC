@@ -17,6 +17,22 @@
 #include "ui/Icons.h"
 #include "ui/MainWindow.h"
 
+namespace {
+
+// Windows Explorer passes a drive as "D:\" between quotes, which the C
+// runtime turns into D:" (the backslash escapes the quote).
+QString cleanPathArgument(QString path) {
+    if (path.endsWith(QLatin1Char('"'))) {
+        path.chop(1);
+    }
+    if (path.size() == 2 && path.at(1) == QLatin1Char(':')) {
+        path += QLatin1Char('/');
+    }
+    return path;
+}
+
+}  // namespace
+
 int main(int argc, char* argv[]) {
     QApplication::setHighDpiScaleFactorRoundingPolicy(Qt::HighDpiScaleFactorRoundingPolicy::PassThrough);
     QApplication app(argc, argv);
@@ -107,7 +123,10 @@ int main(int argc, char* argv[]) {
     }
     window.show();
 
-    const QStringList paths = parser.positionalArguments();
+    QStringList paths;
+    for (const QString& arg : parser.positionalArguments()) {
+        paths << cleanPathArgument(arg);
+    }
     if (!paths.isEmpty()) {
         QTimer::singleShot(0, &window, [&window, paths] { window.importPaths(paths); });
     }

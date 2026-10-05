@@ -1,4 +1,4 @@
-# Suporte DICOM do VisualTC 0.1.0
+# Suporte DICOM do VisualTC 0.2.0
 
 Este documento descreve o que o VisualTC lê, como interpreta cada atributo
 relevante e quais são as limitações conhecidas. "Testado" significa coberto
@@ -29,6 +29,34 @@ descompressão): 32 768 linhas/colunas, 20 000 quadros, 4 GiB de pixels
 decodificados por arquivo, 8 GiB por arquivo, 500 000 arquivos por
 varredura. Arquivos acima dos limites são relatados, nunca abertos
 parcialmente.
+
+### Exames compactados
+
+| Formato | Situação |
+|---|---|
+| ZIP | **testado** (Deflate e sem compressão); Deflate64, BZip2, LZMA, XZ e Zstd suportados |
+| ZIP com senha | **testado** (ZipCrypto e AES-256; AES-128/192 suportados); pede a senha, até 3 tentativas |
+| 7z | **testado** |
+| RAR 4 e RAR 5 | suportado (leitura pela libarchive; sem gerador para teste automatizado) |
+| TAR, TAR.GZ/TGZ, TAR.BZ2, TAR.XZ, TAR.ZST | **testado** |
+| Um único arquivo comprimido (`.dcm.gz`; `.bz2`, `.xz`, `.zst`) | **testado** (gzip); demais suportados |
+| Imagem de CD/DVD ISO 9660 (com Joliet/Rock Ridge) | **testado** |
+| Arquivo compactado dentro de outro (até 3 níveis) | **testado** |
+| 7z e RAR **com senha** | não suportado: mensagem pedindo para descompactar antes |
+| Volumes divididos (`.z01`, `.part1.rar`, `.7z.001`) | não suportado |
+
+O tipo é detectado pelo **conteúdo** (assinatura), não pela extensão. A
+extração roda no processo isolado (`visualtc-worker`) e grava só os membros
+que parecem DICOM (ou outros arquivos compactados), com nomes numerados numa
+pasta temporária da sessão: os nomes internos nunca viram caminhos, então
+`../`, caminhos absolutos, links simbólicos e dispositivos não têm efeito —
+**testado**. Limites: 64 GiB extraídos por exame, 8 GiB por membro, 500 000
+membros, 1 GiB livre em disco sempre preservado e taxa de compressão máxima
+de 200× após o primeiro GiB ("bombas" de compressão são recusadas) —
+**testado**. Arquivos compactados danificados são relatados sem derrubar o
+programa — **testado** (fuzzing). A pasta temporária é apagada ao fechar os
+estudos ou o programa, e a de uma sessão interrompida é apagada na próxima
+abertura.
 
 ## 2. Transfer Syntaxes
 

@@ -1,6 +1,6 @@
-# Estado do projeto — VisualTC 0.1.0
+# Estado do projeto — VisualTC 0.2.0
 
-Atualizado em 05/10/2026 (inclui a revisão de código). Convenção: um item só entra em **IMPLEMENTADO**
+Atualizado em 05/10/2026 (versão 0.2.0: exames compactados, painel de séries recolhível, instaladores de um clique e Mac Intel). Convenção: um item só entra em **IMPLEMENTADO**
 depois de compilado e testado (teste automatizado e/ou verificação visual
 por captura de tela). A numeração (§) segue as seções do prompt mestre.
 
@@ -18,6 +18,22 @@ por captura de tela). A numeração (§) segue as seções do prompt mestre.
 - Arquivos inválidos, truncados, não suportados ou sem imagem: relatório de
   importação com motivo, sem interromper nada.
 - Charsets ASCII, ISO_IR 100 (Latin-1), ISO_IR 192 (UTF-8) e UTF-8 não declarado.
+
+### Exames compactados (0.2.0)
+- ZIP (inclusive com senha ZipCrypto/AES), 7z, RAR, TAR/TGZ/TBZ/TXZ/TZST,
+  GZ/BZ2/XZ/ZST de um arquivo e ISO 9660; aninhados até 3 níveis; detecção
+  pelo conteúdo. Por Abrir, menu Arquivo, arrastar e soltar, linha de comando.
+- Extração no processo isolado, nomes internos nunca usados como caminho,
+  limites contra bombas de compressão e disco cheio, cancelamento.
+- Pasta temporária por sessão, apagada ao fechar estudos/programa e, se o
+  programa foi interrompido, na abertura seguinte.
+
+### Interface (0.2.0)
+- Painel de séries recolhível (« / Séries / F2) numa faixa de 36 px,
+  redimensionável até só as miniaturas (com número da série), estado e
+  largura lembrados; pode ir para a borda direita.
+- Abertura pelo sistema: argumentos (inclusive unidade `D:\` vinda do
+  Explorer) e `QFileOpenEvent` do macOS ("Abrir com", ícone no Dock).
 
 ### Leitura de pixels (§ 9–11, 32–34, 74)
 - Transfer syntaxes: Implicit/Explicit LE, Explicit BE, Deflate, JPEG
@@ -86,14 +102,21 @@ por captura de tela). A numeração (§) segue as seções do prompt mestre.
 - Arquivos originais nunca são modificados.
 
 ### Engenharia (§ 78–97)
-- CMake + presets + vcpkg com versões fixadas; CI Windows/macOS ARM/macOS
-  Intel/Ubuntu; empacotamento AppImage, .deb, instalador Inno Setup e DMG
-  (sem assinatura); documentação completa em `docs/`.
+- CMake + presets + vcpkg com versões fixadas (triplets macOS com alvo 12.0);
+  documentação completa em `docs/`.
+- Distribuição: `.deb` e AppImage (runtime estático, sem libfuse2) gerados
+  por `packaging/linux/make_packages.sh` — **executados e testados aqui**
+  (abrem um ZIP e o exame de demonstração); instalador Windows por usuário,
+  sem senha de administrador, com runtime do VC++ e menu "Abrir no VisualTC";
+  DMG universal (Apple Silicon + Intel) com janela "arraste para
+  Aplicativos"; assinatura/notarização opcionais por *secrets*; versão
+  publicada com nomes fixos por tag `v*`; página de download (`site/`).
 
 ## EM DESENVOLVIMENTO
-- **Validação nos runners do CI**: os pacotes de Windows e macOS e o
-  AppImage estão configurados no workflow, mas não foram executados neste
-  ambiente (ver "Testes realizados").
+- **Validação nos runners do CI**: o instalador do Windows, o DMG universal
+  e a página no GitHub Pages estão configurados (com testes de instalação no
+  próprio CI), mas não foram executados neste ambiente, que é Linux sem
+  acesso ao GitHub Actions (ver "Testes realizados").
 - MPR oblíquo por arrasto livre dos eixos do crosshair (hoje: passos de 5°
   por atalho/menu).
 
@@ -112,8 +135,11 @@ por captura de tela). A numeração (§) segue as seções do prompt mestre.
   relatório de medidas.
 - PACS (C-FIND/C-MOVE/C-STORE, DICOMweb) com DCMTK.
 - Tradução da interface para inglês/espanhol (strings já em `tr()`).
-- Assinatura de código (Authenticode, Developer ID + notarização) e
-  binário universal macOS.
+- Certificados de assinatura (Apple Developer ID + notarização; Authenticode
+  no Windows): o CI já assina quando os *secrets* existem; a obtenção dos
+  certificados é decisão (e custo) do distribuidor.
+- 7z e RAR com senha; arquivos divididos em volumes (`.z01`, `.part1.rar`).
+- Pacote `.rpm` (Fedora/openSUSE usam hoje o AppImage).
 - Hanging protocols e layouts por modalidade.
 - Testes com acervo de arquivos reais de fabricantes (GE, Siemens, Philips,
   Canon, Fujifilm) além dos fixtures sintéticos.
@@ -179,18 +205,19 @@ Planar Configuration` adicionado como proteção).
 
 ## TESTES REALIZADOS
 Ambiente: Linux x86_64 (2 núcleos, 7,8 GB), GCC, Qt 6.8.3 (offscreen),
-GDCM 3.0.24, Catch2 3.7.1.
+GDCM 3.0.24, libarchive 3.8.7, Catch2 3.7.1.
 
 | Conjunto | Resultado |
 |---|---|
-| `ctest` Release (`linux-local`) | 84/84 aprovados (83 casos Catch2 + suíte de interface); o teste de localidade roda com `pt_BR.UTF-8` instalada (no CI ela é gerada) |
-| `ctest` Debug + ASan + UBSan | 84/84 aprovados, sem erros do sanitizer |
-| Interface (QtTest offscreen) | 11 testes: janela DICOM, arrasto W/L, roda/teclado, régua 50 mm, ROI em HU, sincronização espacial, crosshair do MPR, queda do worker, falha sem laço de decodificação, multiframe maior que o cache, atalhos únicos e preset pela tecla 1 na janela principal |
+| `ctest` Release com `-Werror` (`linux-local`) | 94/94 aprovados (93 casos Catch2, 14 669 verificações, + suíte de interface); o teste de localidade roda com `pt_BR.UTF-8` instalada (no CI ela é gerada) |
+| `ctest` Debug + ASan + UBSan | 94/94 aprovados, sem erros do sanitizer (suíte de interface repetida 6 vezes sem falhas) |
+| Interface (QtTest offscreen) | 15 testes: janela DICOM, arrasto W/L, roda/teclado, régua 50 mm, ROI em HU, sincronização espacial, crosshair do MPR, queda do worker, falha sem laço de decodificação, multiframe maior que o cache, atalhos únicos e preset pela tecla 1, ZIP AES com senha errada e certa, limpeza da pasta temporária, painel de séries recolhível/estreito/lembrado, abertura por `QFileOpenEvent` |
+| Exames compactados (`[archive]`) | detecção pelo conteúdo; ZIP, ZIP sem compressão, 7z, TGZ, TBZ2, TXZ, TZST, ISO, `.dcm.gz`; nomes hostis e link simbólico; aninhados; ZipCrypto e AES-256; bombas e limites; 600 arquivos compactados danificados; protocolo do worker rejeita caminhos fora do destino. App real: ZIP de 26 MB com 425 imagens aberto em ~1,9 s, pasta temporária apagada ao sair |
 | Localidade | app sem processo isolado com `LC_ALL=pt_BR.UTF-8`: calibração, espessura, posição e MPR corretos |
 | QA numérico | 1000 × 1 − 1024 = −24 HU; 100 px × 0,5 mm = 50 mm; VOI conforme PS3.3; MPR exato em fantomas lineares (axial, tilt, espaçamento irregular, oblíquo) |
 | Fuzzing (ASan, em processo) | 3 000 arquivos nativos corrompidos + 15 900 JPEG/JPEG Lossless/RLE corrompidos: nenhuma falha |
 | Isolamento | queda forçada do worker durante a decodificação: app continua e reinicia o worker |
 | Verificação visual | capturas em `docs/screenshots/` (1×1, 2×2 com sincronização e medidas, 3×3 com todas as modalidades, MPR fino e MIP 20 mm) |
 | Desempenho (`vtc_bench`, Release, 2 núcleos) | varredura de 425 arquivos: 21 ms; decodificação por imagem: nativo 0,5 ms, JPEG-LS 1,0 ms, J2K 4,5 ms, RLE 4,7 ms, US 40 quadros RGB 17 ms; W/L 0,1–0,9 ms; volume 400×400×221 em 234 ms; MPR plano fino 2–3 ms; MIP 20 mm 44–64 ms |
-| Empacotamento | `.deb` montado localmente a partir da árvore de instalação (script do CI); AppImage, instalador Windows e DMG **não executados aqui** |
+| Empacotamento | `make_packages.sh` executado aqui: `.deb` (extraído e executado fora do ambiente de compilação, abrindo um ZIP com série JPEG 2000) e AppImage (runtime estático, sem libfuse2; abriu o exame de demonstração em MPR). Fundo do DMG e página de download verificados por captura (Windows, Mac em modo escuro, Linux, celular). Instalador Windows e DMG **não executados aqui** (exigem Windows/macOS) — o CI os gera e testa |
 | Windows / macOS | **não compilados neste ambiente**; configurados no CI (GitHub Actions) |

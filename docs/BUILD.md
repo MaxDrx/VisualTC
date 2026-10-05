@@ -8,7 +8,7 @@
 | Ninja | recomendado (Linux/macOS) |
 | Compilador C++20 | MSVC 2022 17.8+, Apple Clang 15+, Clang 14+, GCC 11+ |
 | Qt | 6.5 ou superior; **fixado em 6.8.3 LTS** no CI (módulos qtbase, qtsvg, qtimageformats) |
-| vcpkg | baseline `9e593bb18ea69cc5095e012465dcd675a822ed0d` (fixa GDCM 3.0.24 e Catch2 3.7.1) |
+| vcpkg | baseline `9e593bb18ea69cc5095e012465dcd675a822ed0d` (fixa GDCM 3.0.24, Catch2 3.7.1 e a libarchive 3.8.x da baseline) |
 
 As dependências de terceiros e o motivo de cada uma estão em
 [ARCHITECTURE.md](ARCHITECTURE.md#d-dependências-e-versões-fixadas).
@@ -31,8 +31,8 @@ ctest --preset linux-release
 | `linux-debug-asan` | Linux | Debug + AddressSanitizer + UndefinedBehaviorSanitizer |
 | `linux-local` | Linux sem vcpkg | dependências em `/opt/visualtc-deps` (ver §3) |
 | `windows-msvc-release` | Windows 10/11 x64 | Visual Studio 2022, `x64-windows` |
-| `macos-arm64-release` | macOS 12+ Apple Silicon | `arm64-osx`, `CMAKE_OSX_ARCHITECTURES=arm64` |
-| `macos-x86_64-release` | macOS 12+ Intel | `x64-osx` |
+| `macos-arm64-release` | macOS 12+ Apple Silicon | triplet `arm64-osx-visualtc` (`cmake/triplets`: dependências também para macOS 12) |
+| `macos-x86_64-release` | macOS 12+ Intel | triplet `x64-osx-visualtc` |
 
 No Windows, use o "x64 Native Tools Command Prompt for VS 2022" (ou o
 PowerShell com `VsDevShell`) e `set QT_ROOT_DIR=C:\Qt\6.8.3\msvc2022_64`.
@@ -52,8 +52,10 @@ Opções do CMake:
 
 ## 3. Compilação sem vcpkg (Linux)
 
-`scripts/build_deps_linux.sh` compila GDCM 3.0.24, Catch2 3.7.1 e Qt 6.8.3
-(qtbase, qtsvg, qtimageformats) a partir das tags oficiais:
+`scripts/build_deps_linux.sh` compila GDCM 3.0.24, zstd 1.5.7, libarchive
+3.8.7, Catch2 3.7.1 e Qt 6.8.3 (qtbase, qtsvg, qtimageformats) a partir das
+tags oficiais (precisa dos pacotes de desenvolvimento de zlib, bzip2, liblzma
+e OpenSSL; no Ubuntu: `zlib1g-dev libbz2-dev liblzma-dev libssl-dev`):
 
 ```bash
 scripts/build_deps_linux.sh /opt/visualtc-deps          # Qt completo (desktop)
@@ -76,12 +78,15 @@ build/linux-release/tests/visualtc_tests --list-tags
 - `visualtc_tests` (Catch2): texto/charsets, VOI/HU, medidas, ROIs,
   orientação, ordenação e geometria, leitura DICOM em todos os codecs,
   arquivos hostis, MPR com fantomas lineares (resultado exato), cache,
-  protocolo do worker, sincronização.
+  protocolo do worker, sincronização e exames compactados (`[archive]`: todos
+  os formatos, nomes maliciosos, aninhados, senha, bombas de compressão,
+  arquivos danificados).
 - `visualtc_ui_tests` (QtTest, `QT_QPA_PLATFORM=offscreen`): janela real,
   arrasto de W/L, roda/teclado, régua em mm, ROI em HU, sincronização,
   crosshair do MPR, recuperação de queda do worker, arquivo com falha sem
-  laço de decodificação, multiframe maior que o cache e, na janela
-  principal, atalhos sem duplicidade e preset de TC pela tecla 1.
+  laço de decodificação, multiframe maior que o cache, ZIP com senha (AES),
+  limpeza da pasta temporária e, na janela principal, atalhos sem
+  duplicidade, preset de TC pela tecla 1 e o painel de séries recolhível.
 - O teste `DS parsing does not depend on the process locale` precisa de uma
   localidade com vírgula decimal instalada (`sudo locale-gen pt_BR.UTF-8` no
   Ubuntu); sem ela, é marcado como ignorado.
@@ -102,78 +107,133 @@ O executável também tem opções de automação usadas no CI:
 
 `.github/workflows/build.yml` executa, a cada push/PR:
 
-1. Matriz Ubuntu 22.04, Windows Server 2022, macOS 14 (ARM) e macOS 13
-   (Intel): configuração, compilação, testes, teste de fumaça (gera o exame
-   sintético, abre o MPR e salva uma captura) e empacotamento.
-2. Ubuntu 24.04: testes sob ASan/UBSan e `clang-tidy` no núcleo
-   (`.clang-tidy`).
+| Job | Runner | O que faz |
+|---|---|---|
+| Ubuntu x86_64 | `ubuntu-22.04` (glibc 2.35) | compila, testa, gera `.deb` + AppImage, **instala o `.deb` com apt** e abre um exame com ele e com o AppImage numa tela virtual (Xvfb, plugin X11 real), sem o Qt do CI no caminho; confere o runtime estático do AppImage |
+| Windows x64 | `windows-2022` | compila, testa, gera o instalador, **instala em modo silencioso**, abre um exame com a cópia instalada (sem o Qt do CI no PATH), confere o menu de contexto e desinstala |
+| macOS Apple Silicon | `macos-15` | compila, testa, aplica `macdeployqt` |
+| macOS Intel | `macos-15-intel` | idem, nativo em x86_64 |
+| macOS DMG | `macos-15` | junta os dois apps em um **app universal** (`lipo`), assina, gera o DMG e o testa nas duas arquiteturas |
+| ASan/UBSan | `ubuntu-24.04` | testes sob sanitizers e `clang-tidy` no núcleo |
 
-Os pacotes ficam como artefatos do workflow (`VisualTC-<preset>`).
+Os pacotes ficam como artefatos do workflow. Datas a acompanhar: o GitHub
+remove a imagem `ubuntu-22.04` em abril de 2027 (trocar por `ubuntu-24.04`;
+os pacotes passam a exigir Ubuntu 24.04 / Debian 13) e oferece a imagem Intel
+`macos-15-intel` até 2027.
+
+### Publicar uma versão
+
+1. Atualize `VERSION` em `CMakeLists.txt` (o instalador do Windows, o `.deb`
+   e o app do macOS leem a versão daí) e `version` em `vcpkg.json`.
+2. Crie e envie a tag: `git tag v0.2.0 && git push origin v0.2.0` (o job
+   confere que a tag e o `VERSION` do CMakeLists.txt coincidem).
+3. O job **release** publica a versão no GitHub com nomes fixos:
+   `VisualTC-Setup-x64.exe`, `VisualTC-macOS.dmg`, `visualtc_amd64.deb`,
+   `VisualTC-x86_64.AppImage` e `SHA256SUMS.txt`, com as instruções de
+   instalação em português (`packaging/release-notes.md`).
+
+Como os nomes não mudam, `https://github.com/<dono>/<repo>/releases/latest/download/<arquivo>`
+aponta sempre para a versão mais nova — é o que usam a seção "Baixar" do
+README e a página de download.
+
+**Página de download.** `site/index.html` (português, sem dependências
+externas) detecta o sistema do visitante e destaca o botão certo, com os
+passos de instalação de cada sistema. O workflow `pages.yml` a publica em
+`https://<dono>.github.io/<repo>/`; ative uma vez em *Settings › Pages ›
+Source: GitHub Actions*.
+
+### Assinatura (opcional, recomendada)
+
+Sem certificados, tudo funciona, mas na primeira abertura o Windows mostra o
+SmartScreen ("Mais informações › Executar assim mesmo") e o macOS pede
+confirmação em *Ajustes do Sistema › Privacidade e Segurança*. Para que o
+programa abra com um simples clique, cadastre estes *secrets* no repositório
+(*Settings › Secrets and variables › Actions*):
+
+| Secret | Uso |
+|---|---|
+| `MACOS_CERTIFICATE_P12` | certificado "Developer ID Application" exportado (.p12) em base64 |
+| `MACOS_CERTIFICATE_PASSWORD` | senha do .p12 |
+| `MACOS_SIGN_IDENTITY` | ex.: `Developer ID Application: Nome (TEAMID)` |
+| `APPLE_ID`, `APPLE_TEAM_ID`, `APPLE_APP_PASSWORD` | notarização (`notarytool`; senha de app gerada em appleid.apple.com) |
+| `WINDOWS_CERTIFICATE_PFX`, `WINDOWS_CERTIFICATE_PASSWORD` | certificado Authenticode (.pfx em base64) |
+
+O certificado da Apple exige a conta Apple Developer (anual). No Windows, os
+certificados emitidos desde 2023 ficam em token/HSM e não podem ser
+exportados como .pfx; nesse caso, assine com o serviço de assinatura em
+nuvem da Microsoft (Azure) ou da autoridade certificadora, adaptando a função
+`Invoke-Sign` de `packaging/windows/make_installer.ps1`.
 
 ## 6. Empacotamento
 
-### Linux — `VisualTC-x86_64.AppImage` e `visualtc_amd64.deb`
+Cada sistema tem um script, o mesmo usado pelo CI.
+
+### Linux — `visualtc_amd64.deb` e `VisualTC-x86_64.AppImage`
 
 ```bash
-cmake --install build/linux-release --prefix AppDir/usr
-export QMAKE=$QT_ROOT_DIR/bin/qmake EXTRA_PLATFORM_PLUGINS=libqwayland-generic.so
-linuxdeploy-x86_64.AppImage --appdir AppDir \
-  --executable AppDir/usr/bin/VisualTC --executable AppDir/usr/bin/visualtc-worker \
-  --desktop-file packaging/linux/visualtc.desktop --icon-file packaging/linux/visualtc.png \
-  --plugin qt --output appimage
+packaging/linux/make_packages.sh build/linux-release "$QT_ROOT_DIR/bin/qmake" dist
 ```
 
-O AppImage é gerado no Ubuntu 22.04 (glibc 2.35) para rodar nas LTS mais
-recentes. O `.deb` reaproveita a mesma árvore autocontida em
-`/opt/visualtc` (Qt 6.8 privado, pois o Ubuntu LTS traz Qt 6.2/6.4), com
-`/usr/bin/visualtc`, entrada de menu e ícone — ver o passo "Package (Linux)"
-do workflow. Em distribuições com Qt ≥ 6.5 no sistema, `cpack -G DEB` gera
-um pacote que usa o Qt da distribuição.
+O script baixa linuxdeploy, o plugin Qt e o appimagetool (ou usa os que
+estiverem em `TOOLS_DIR`), monta a árvore autocontida (Qt 6.8, GDCM e
+libarchive embutidos) e gera:
+
+- `.deb`: instala em `/opt/visualtc`, com `/usr/bin/visualtc`, entrada de
+  menu e ícone. Clique duplo abre a Central de Programas (Ubuntu, Mint,
+  Debian com GNOME Software); `apt` resolve as dependências do sistema.
+- Plataformas do Qt incluídas: X11 (`xcb`) e `offscreen`. Em sessões
+  Wayland o VisualTC roda pelo XWayland; para incluir o plugin Wayland é
+  preciso também o módulo de integração de shell
+  (`EXTRA_QT_MODULES=waylandcompositor` no linuxdeploy-plugin-qt).
+- AppImage: roda em qualquer distribuição x86_64 com glibc ≥ 2.35, sem
+  instalar; usa o *runtime* estático do appimagetool, então **não precisa de
+  libfuse2**. O usuário só precisa marcar "Permitir executar como programa".
+
+Em distribuições com Qt ≥ 6.5 no sistema, `cpack -G DEB` gera um pacote que
+usa o Qt da distribuição.
 
 ### Windows — `VisualTC-Setup-x64.exe`
 
 ```powershell
-mkdir stage; copy build\windows-msvc-release\bin\Release\*.exe stage\
-copy build\windows-msvc-release\bin\Release\*.dll stage\   # DLLs do vcpkg, se houver
-& "$env:QT_ROOT_DIR\bin\windeployqt.exe" --release --no-opengl-sw stage\VisualTC.exe
-copy README.md, THIRD_PARTY_LICENSES.md stage\
-ISCC.exe /DSourceDir=%CD%\stage /DOutputDir=%CD%\dist packaging\windows\visualtc.iss
+pwsh packaging/windows/make_installer.ps1 -BuildDir build/windows-msvc-release -OutDir dist
 ```
 
-O instalador (Inno Setup 6, português e inglês) instala por usuário ou para
-todos, cria atalhos e um desinstalador. **Assinatura (recomendada para
-evitar o SmartScreen):**
+O script junta os executáveis, as DLLs do vcpkg, o Qt (`windeployqt`) e o
+**runtime do Visual C++** (cópia local, para abrir em PCs sem o
+"Visual C++ Redistributable"), assina se houver certificado e chama o Inno
+Setup 6 (`packaging/windows/visualtc.iss`). O instalador:
 
-```powershell
-signtool sign /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 /a stage\VisualTC.exe stage\visualtc-worker.exe
-# depois de gerar o instalador:
-signtool sign /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 /a dist\VisualTC-Setup-x64.exe
-```
+- não pede senha de administrador (instala para o usuário em
+  `%LOCALAPPDATA%\Programs\VisualTC`; `/ALLUSERS` instala para todos);
+- escolhe português ou inglês pelo idioma do Windows, sem perguntar;
+- cria atalhos no menu Iniciar e na área de trabalho e abre o VisualTC no fim;
+- opcionalmente adiciona "Abrir no VisualTC" ao clicar com o botão direito
+  em pastas, unidades (CD/DVD, pendrive) e arquivos ZIP/RAR/7z/ISO, e
+  associa `.dcm` (aparece em "Abrir com");
+- instalação silenciosa para TI: `VisualTC-Setup-x64.exe /VERYSILENT /ALLUSERS`.
 
-### macOS — `VisualTC.dmg`
-
-O `visualtc-worker` é copiado para `VisualTC.app/Contents/MacOS` na
-compilação. Para distribuição:
+### macOS — `VisualTC-macOS.dmg` (universal)
 
 ```bash
+# em cada Mac (ou runner): Apple Silicon e Intel
 APP=build/macos-arm64-release/bin/VisualTC.app
 $QT_ROOT_DIR/bin/macdeployqt "$APP" -executable="$APP/Contents/MacOS/visualtc-worker"
-# Assinatura Developer ID com hardened runtime (o worker é assinado junto)
-codesign --force --options runtime --timestamp \
-  --sign "Developer ID Application: <Nome> (<TEAMID>)" "$APP/Contents/MacOS/visualtc-worker"
-codesign --force --deep --options runtime --timestamp \
-  --sign "Developer ID Application: <Nome> (<TEAMID>)" "$APP"
-hdiutil create -volname VisualTC -srcfolder "$APP" -ov -format UDZO VisualTC.dmg
-codesign --sign "Developer ID Application: <Nome> (<TEAMID>)" --timestamp VisualTC.dmg
-# Notarização
-xcrun notarytool submit VisualTC.dmg --keychain-profile "<perfil>" --wait
-xcrun stapler staple VisualTC.dmg
+# depois, com os dois apps lado a lado (requer: pip install dmgbuild)
+packaging/macos/make_dmg.sh VisualTC-macOS.dmg arm64/VisualTC.app x86_64/VisualTC.app
 ```
 
-Sem certificado, o CI aplica uma assinatura ad hoc (`codesign --sign -`):
-o app abre com "clique direito › Abrir" na primeira vez. Um binário
-universal (arm64 + x86_64) pode ser feito com `lipo` a partir dos dois
-presets; o CI publica um DMG por arquitetura.
+`make_dmg.sh` combina com `lipo` os executáveis das duas arquiteturas (os
+frameworks e plugins do Qt já são universais), confere que **todo** código
+do pacote roda em arm64 e x86_64, assina de dentro para fora (Developer ID
+com *hardened runtime* se `MACOS_SIGN_IDENTITY` estiver definido; senão,
+assinatura ad hoc), gera o DMG com `dmgbuild` — janela com o app, uma seta e
+o atalho **Aplicativos**, e a instrução "Arraste o VisualTC para a pasta
+Aplicativos" no fundo (`tools/make_dmg_background.py`) — e, com as
+credenciais da Apple, notariza e grampeia (`stapler`) o DMG. Com um único
+app, gera um DMG daquela arquitetura.
+
+O app declara `.dcm`, arquivos compactados e pastas: aparece em "Abrir com"
+no Finder e aceita a pasta do CD arrastada para o ícone no Dock.
 
 ## 7. Solução de problemas
 

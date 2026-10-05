@@ -1,16 +1,61 @@
-# Guia do usuário — VisualTC 0.1.0
+# Guia do usuário — VisualTC 0.2.0
 
-> O VisualTC 0.1.0 não é um dispositivo médico registrado. Confira medidas e
+> O VisualTC 0.2.0 não é um dispositivo médico registrado. Confira medidas e
 > reconstruções antes de qualquer uso diagnóstico.
+
+## 0. Instalar
+
+Baixe o arquivo do seu sistema na página de download (ou na seção "Baixar"
+do README) e:
+
+| Sistema | Arquivo | Passos |
+|---|---|---|
+| Windows 10/11 | `VisualTC-Setup-x64.exe` | clique duas vezes › **Avançar** › **Concluir**. Não pede senha de administrador; o VisualTC abre ao final e fica no menu Iniciar e na área de trabalho |
+| Mac (chip Apple ou Intel, macOS 12+) | `VisualTC-macOS.dmg` | clique duas vezes e arraste o VisualTC para **Aplicativos**; abra pelo Launchpad |
+| Ubuntu, Debian, Mint | `visualtc_amd64.deb` | clique duas vezes › **Instalar**; procure VisualTC no menu |
+| Outras distribuições Linux | `VisualTC-x86_64.AppImage` | botão direito › Propriedades › *Permitir executar como programa*; clique duas vezes |
+
+Se na primeira abertura aparecer um aviso de segurança — no Windows, "O
+Windows protegeu o computador": **Mais informações › Executar assim mesmo**;
+no Mac: **Ajustes do Sistema › Privacidade e Segurança › Abrir Mesmo
+Assim**. Isso só é necessário uma vez (e não aparece nas versões assinadas).
+
+Para desinstalar: Windows, *Configurações › Aplicativos*; Mac, arraste o
+VisualTC de Aplicativos para o Lixo; Ubuntu, Central de Programas (ou
+`sudo apt remove visualtc`); AppImage, apague o arquivo.
 
 ## 1. Abrir um exame
 
 - **Pasta** (Ctrl+Shift+O): escolha a pasta do CD/pendrive ou a pasta
   baixada do PACS. Todas as subpastas são lidas; não importa se os arquivos
   têm extensão `.dcm` ou nenhuma.
-- **Abrir** (Ctrl+O): um ou mais arquivos.
-- **Arrastar e soltar** pastas ou arquivos na janela.
+- **Abrir** (Ctrl+O): um ou mais arquivos, inclusive exames compactados.
+- **Arquivo › Abrir exame compactado (ZIP, RAR, 7z)…**: o mesmo, já filtrando
+  os arquivos compactados.
+- **Arrastar e soltar** pastas, arquivos ou arquivos compactados na janela.
+- **Windows:** botão direito no CD/DVD, no pendrive, numa pasta ou num
+  ZIP/RAR/7z › **Abrir no VisualTC** (se marcado na instalação).
+- **Mac:** arraste a pasta do CD ou o ZIP para o ícone do VisualTC no Dock,
+  ou use "Abrir com › VisualTC" no Finder.
 - Pela linha de comando: `VisualTC /caminho/do/exame`.
+
+### Exames compactados
+
+O VisualTC abre exames recebidos compactados — **ZIP**, **RAR**, **7z**, TAR,
+TGZ, GZ, BZ2, XZ, ZST e imagens de CD **ISO** —, inclusive um arquivo
+compactado dentro de outro. Não é preciso descompactar antes:
+
+- Se o ZIP tiver senha, o VisualTC pede a senha (até três tentativas). RAR e
+  7z com senha ainda não são suportados: descompacte-os antes com o programa
+  do sistema.
+- Só as imagens DICOM são extraídas, para uma pasta temporária do VisualTC,
+  apagada ao fechar o exame (**Arquivo › Fechar estudos**) ou o programa. O
+  arquivo compactado original não é alterado.
+- Nas informações DICOM, o arquivo aparece como
+  `exame.zip › DICOM/ST1/IM1`.
+- Por segurança, arquivos compactados que se expandiriam além do espaço livre
+  em disco ou de forma anormal ("bombas" de compressão) são recusados com uma
+  mensagem.
 
 A barra de status mostra o progresso. Ao final, a maior série (que não seja
 topograma) abre automaticamente. Arquivos com problema não interrompem a
@@ -27,7 +72,19 @@ volumétrica. Avisos aparecem na própria série (ex.: "cortes ausentes",
 
 - **Duplo clique** abre a série no viewport ativo.
 - **Arraste** a série para qualquer viewport.
-- **F2** mostra/oculta o painel.
+- **Recolher o painel** para ganhar área de imagem: botão **«** no topo do
+  painel, botão **Séries** na barra de ferramentas ou **F2**. O painel vira
+  uma faixa estreita na borda; clique nela (ou em **»**, ou F2) para
+  trazê-lo de volta.
+- **Estreitar o painel**: arraste a borda entre o painel e as imagens. Abaixo
+  de certa largura ficam só as miniaturas, com o número da série sobre cada
+  uma (os detalhes continuam na dica ao passar o mouse).
+- A largura e o estado (aberto/recolhido) são lembrados na próxima vez.
+- O painel pode ser arrastado pelo título para a borda direita da janela.
+
+| Painel só com miniaturas | Painel recolhido |
+|---|---|
+| ![Painel estreito](screenshots/painel-miniaturas.png) | ![Painel recolhido](screenshots/painel-recolhido.png) |
 - O menu de contexto (botão direito) abre a série no viewport ativo,
   direto em MPR, ou mostra as informações DICOM.
 
@@ -158,7 +215,7 @@ calibração, as medidas são mostradas em **pixels** e o aviso
 | Tecla | Função | Tecla | Função |
 |---|---|---|---|
 | Ctrl+O | Abrir arquivos | Ctrl+Shift+O | Abrir pasta |
-| F2 | Painel de estudos | Ctrl+1…6 | Layouts |
+| F2 | Recolher/mostrar o painel de séries | Ctrl+1…6 | Layouts |
 | W | Window/Level | P | Pan |
 | Z | Zoom | S | Navegar cortes |
 | M | Régua | A | Ângulo |

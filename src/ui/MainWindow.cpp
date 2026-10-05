@@ -6,6 +6,7 @@
 #include <QCloseEvent>
 #include <QDialogButtonBox>
 #include <QDockWidget>
+#include <QFileOpenEvent>
 #include <QFileDialog>
 #include <QHeaderView>
 #include <QInputDialog>
@@ -44,6 +45,7 @@
 #include "ui/Icons.h"
 #include "ui/PreferencesDialog.h"
 #include "ui/SeriesBrowser.h"
+#include "ui/SeriesDock.h"
 #include "ui/ViewerGrid.h"
 #include "viewer2d/AnnotationStore.h"
 #include "viewer2d/StackSource.h"
@@ -131,7 +133,27 @@ MainWindow::MainWindow() {
     if (!restoreGeometry(s.windowGeometry())) {
         resize(1400, 880);
     }
+    // Files the system asks us to open arrive one event each: gather the ones
+    // that come together and import them as one exam (later, if an import is
+    // still running).
+    fileOpenTimer_ = new QTimer(this);
+    fileOpenTimer_->setSingleShot(true);
+    fileOpenTimer_->setInterval(250);
+    connect(fileOpenTimer_, &QTimer::timeout, this, [this] {
+        if (import_->running()) {
+            fileOpenTimer_->start();
+            return;
+        }
+        const QStringList paths = fileOpenQueue_;
+        fileOpenQueue_.clear();
+        importPaths(paths);
+    });
+    qApp->installEventFilter(this);
+
     restoreState(s.windowState());
+    browserDock_->show();  // older versions let the panel be closed
+    browserDock_->setExpandedWidth(s.seriesPanelWidth());
+    browserDock_->setCollapsed(s.seriesPanelCollapsed());
     updateEmptyHint();
     setTool(Tool::WindowLevel);
     updateActionStates();
@@ -139,6 +161,7 @@ MainWindow::MainWindow() {
 }
 
 MainWindow::~MainWindow() {
+    qApp->removeEventFilter(this);
     mprCancel_ = true;
     if (mprThread_.joinable()) {
         mprThread_.join();
@@ -173,9 +196,13 @@ void MainWindow::createActions() {
     actOpenArchive_ = make(tr("Abrir exame compactado (ZIP, RAR, 7z)…"), "open-file", QKeySequence(),
                            [this] { openArchive(); });
     actOpenFolder_ = make(tr("Abrir pasta…"), "open-folder", QKeySequence(tr("Ctrl+Shift+O")), [this] { openFolder(); });
-    actStudies_ = make(tr("Estudos"), "info", QKeySequence(tr("F2")), [this] {
-        browserDock_->setVisible(!browserDock_->isVisible());
-    });
+    actStudies_ = make(tr("Painel de séries"), "sidebar", QKeySequence(tr("F2")), [this] {
+        browserDock_->show();
+        browserDock_->toggleCollapsed();
+        actStudies_->setChecked(!browserDock_->isCollapsed());
+    }, tr("Mostrar ou recolher o painel de séries — recolhido, as imagens usam quase toda a largura da tela  (F2)"));
+    actStudies_->setCheckable(true);
+    actStudies_->setChecked(true);
     actExport_ = make(tr("Exportar imagem…"), "export", QKeySequence(tr("Ctrl+E")), [this] {
         ImageExporter::exportViewport(this, grid_->activeViewport());
     });
@@ -544,6 +571,7 @@ void MainWindow::createToolbar() {
     tb->setToolButtonStyle(Qt::ToolButtonTextUnderIcon);
     actOpenFiles_->setIconText(tr("Abrir"));
     actOpenFolder_->setIconText(tr("Pasta"));
+    actStudies_->setIconText(tr("Séries"));
     tb->addAction(actOpenFiles_);
     tb->addAction(actOpenFolder_);
     tb->addAction(actStudies_);
@@ -616,13 +644,15 @@ void MainWindow::createToolbar() {
 }
 
 void MainWindow::createDock() {
-    browser_ = new SeriesBrowser(this);
-    browserDock_ = new QDockWidget(tr("Estudos e séries"), this);
-    browserDock_->setObjectName("seriesDock");
-    browserDock_->setWidget(browser_);
-    browserDock_->setFeatures(QDockWidget::DockWidgetMovable | QDockWidget::DockWidgetClosable);
-    browserDock_->setMinimumWidth(250);
+    browserDock_ = new SeriesDock(this);
+    browser_ = browserDock_->browser();
     addDockWidget(Qt::LeftDockWidgetArea, browserDock_);
+    connect(browserDock_, &SeriesDock::collapsedChanged, this, [this](bool collapsed) {
+        actStudies_->setChecked(!collapsed);
+    });
+    // Collapsing replaces closing: keep the panel out of the toolbar's
+    // right-click menu, where it could be hidden for good.
+    browserDock_->toggleViewAction()->setVisible(false);
     connect(browser_, &SeriesBrowser::seriesActivated, this, [this](const QString& id) { openSeries(id); });
     connect(browser_, &SeriesBrowser::seriesMprRequested, this, [this](const QString& id) { startMpr(id); });
     connect(browser_, &SeriesBrowser::seriesInfoRequested, this, [this](const QString& id) { showDicomInfo(id); });
@@ -737,6 +767,7 @@ void MainWindow::onImportFinished() {
     displayNames_.insert(r.displayNames.begin(), r.displayNames.end());
     const std::size_t added = db_.addInstances(r.instances);
     browser_->setDatabase(db_);
+    browserDock_->setSeriesCount(browser_->seriesCount());
     updateEmptyHint();
     for (const auto& s : db_.allSeries()) {
         thumbs_->request(s);
@@ -840,6 +871,7 @@ void MainWindow::closeStudies() {
     annotations_->undoStack()->clear();
     db_.clear();
     browser_->setDatabase(db_);
+    browserDock_->setSeriesCount(browser_->seriesCount());
     updateEmptyHint();
     thumbs_->clear();
     frames_->clear();
@@ -1259,8 +1291,21 @@ void MainWindow::showAbout() {
                  QString::fromStdString(gdcmVersion())));
 }
 
+bool MainWindow::eventFilter(QObject* watched, QEvent* event) {
+    if (watched == qApp && event->type() == QEvent::FileOpen) {
+        const QString file = static_cast<QFileOpenEvent*>(event)->file();
+        if (!file.isEmpty()) {
+            fileOpenQueue_ << file;
+            fileOpenTimer_->start();
+        }
+        return true;
+    }
+    return QMainWindow::eventFilter(watched, event);
+}
+
 void MainWindow::closeEvent(QCloseEvent* event) {
     AppSettings::instance().saveWindow(saveGeometry(), saveState());
+    AppSettings::instance().setSeriesPanel(browserDock_->isCollapsed(), browserDock_->expandedWidth());
     mprCancel_ = true;
     import_->cancel();
     QMainWindow::closeEvent(event);

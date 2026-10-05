@@ -20,6 +20,13 @@ incluir este arquivo e os textos completos junto aos pacotes.
 | utfcpp (incluído no GDCM) | — | Boost Software License 1.0 | conversão UTF-8 |
 | libuuid (incluído no GDCM) | — | BSD-3-Clause | geração de UIDs (não usada para gravar arquivos) |
 | md5 (L. Peter Deutsch, incluído no GDCM) | — | zlib-like | — |
+| libarchive | 3.8.x | BSD-2-Clause | biblioteca estática; leitura de exames compactados (ZIP, 7z, RAR, TAR, ISO…) |
+| Zstandard (zstd) | 1.5.7 | BSD-3-Clause (licença dupla com GPLv2; usada sob BSD) | descompressão `.zst` e ZIP/7z com zstd |
+| bzip2 / libbz2 | 1.0.8 | licença bzip2 (estilo BSD) | descompressão `.bz2` |
+| xz / liblzma | 5.x | 0BSD (versões antigas: domínio público) | descompressão `.xz` e 7z/LZMA |
+| OpenSSL (libcrypto) — Windows e Linux | 3.x | Apache-2.0 | decifrar ZIP com senha (AES); no macOS usa-se o CommonCrypto do sistema |
+| Runtime do Microsoft Visual C++ (Windows) | 14.x | termos de redistribuição do Visual Studio | DLLs `msvcp140`/`vcruntime140` ao lado do programa |
+| Runtime AppImage (type2-runtime) | — | MIT | início do `VisualTC-x86_64.AppImage` |
 
 ### Avisos de copyright
 
@@ -38,6 +45,14 @@ incluir este arquivo e os textos completos junto aos pacotes.
   and Clark Cooper; Copyright (c) 2001-2006 Expat maintainers. MIT.
 - **utfcpp**: Copyright 2006 Nemanja Trifunovic. BSL-1.0.
 - **md5**: Copyright (C) 1999, 2002 Aladdin Enterprises.
+- **libarchive**: Copyright (c) 2003-2018 Tim Kientzle e demais autores.
+  BSD-2-Clause. <https://github.com/libarchive/libarchive>
+- **Zstandard**: Copyright (c) Meta Platforms, Inc. and affiliates. BSD-3-Clause.
+  <https://github.com/facebook/zstd>
+- **bzip2**: Copyright (C) 1996-2019 Julian R Seward. <https://sourceware.org/bzip2/>
+- **xz / liblzma**: Lasse Collin e demais autores. 0BSD. <https://tukaani.org/xz/>
+- **OpenSSL**: Copyright (c) 1998-2025 The OpenSSL Project Authors. Apache License 2.0.
+  <https://www.openssl.org/>
 
 ## Qt e a LGPL v3 — obrigações de quem distribui
 
@@ -65,7 +80,7 @@ permissivas listadas em <https://doc.qt.io/qt-6/licenses-used-in-qt.html>.
 |---|---|---|
 | Catch2 | 3.7.1 | Boost Software License 1.0 |
 | CMake, Ninja, vcpkg | — | BSD-3 / Apache-2.0 / MIT |
-| linuxdeploy, Inno Setup | — | MIT / licença Inno Setup |
+| linuxdeploy, appimagetool, Inno Setup, dmgbuild | — | MIT / MIT / licença Inno Setup / MIT |
 
 ## Planejados (ainda não incluídos)
 

@@ -1,5 +1,11 @@
 name: build
 
+# Builds and tests VisualTC on Linux, Windows and macOS (Apple Silicon and
+# Intel), packages the installers and, for tags v*, publishes them as a
+# GitHub release under fixed names, so that
+#   https://github.com/<dono>/<repo>/releases/latest/download/<arquivo>
+# always points to the newest version (README and download page use these).
+
 on:
   push:
     branches: [main]
@@ -7,9 +13,12 @@ on:
   pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 env:
   QT_VERSION: "6.8.3"
-  VCPKG_COMMIT: "9e593bb18ea69cc5095e012465dcd675a822ed0d"  # vcpkg 2026.07.29, pins GDCM 3.0.24 / Catch2 3.7.1
+  VCPKG_COMMIT: "9e593bb18ea69cc5095e012465dcd675a822ed0d"  # vcpkg 2026.07.29: fixes the versions of GDCM, libarchive, Catch2…
   QT_QPA_PLATFORM: offscreen
 
 jobs:
@@ -21,7 +30,10 @@ jobs:
       matrix:
         include:
           - name: Ubuntu x86_64
-            os: ubuntu-22.04          # oldest supported glibc for the AppImage
+            # Oldest glibc still offered by GitHub (2.35): the packages then
+            # also run on Ubuntu 22.04 / Debian 12. GitHub removes this image
+            # in April 2027; move to ubuntu-24.04 then (glibc 2.39).
+            os: ubuntu-22.04
             preset: linux-release
             qt_arch: linux_gcc_64
           - name: Windows x64
@@ -29,16 +41,16 @@ jobs:
             preset: windows-msvc-release
             qt_arch: win64_msvc2022_64
           - name: macOS Apple Silicon
-            os: macos-14
+            os: macos-15
             preset: macos-arm64-release
             qt_arch: clang_64
           - name: macOS Intel
-            os: macos-13
+            os: macos-15-intel   # Intel image, offered by GitHub until 2027
             preset: macos-x86_64-release
             qt_arch: clang_64
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Linux system packages
         if: runner.os == 'Linux'
@@ -46,7 +58,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y ninja-build libgl1-mesa-dev libxkbcommon-x11-0 libxcb-cursor0 \
             libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libxcb-shape0 \
-            libfuse2 file locales
+            file locales xvfb xauth
           # Comma-decimal locale for the "DS parsing does not depend on the process locale" test.
           sudo locale-gen pt_BR.UTF-8
 
@@ -92,82 +104,197 @@ jobs:
           fi
           test -s smoke.png
 
-      # ------------------------------------------------------------ packaging
-      - name: Package (Linux AppImage + DEB)
+      # ------------------------------------------------------------ Linux
+      - name: Package (.deb + AppImage)
         if: runner.os == 'Linux'
-        run: |
-          cmake --install build/${{ matrix.preset }} --prefix AppDir/usr
-          wget -q https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
-          wget -q https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage
-          chmod +x linuxdeploy*.AppImage
-          export QMAKE="$QT_ROOT_DIR/bin/qmake"
-          export EXTRA_PLATFORM_PLUGINS="libqwayland-generic.so"
-          ./linuxdeploy-x86_64.AppImage --appdir AppDir \
-            --executable AppDir/usr/bin/VisualTC --executable AppDir/usr/bin/visualtc-worker \
-            --desktop-file packaging/linux/visualtc.desktop --icon-file packaging/linux/visualtc.png \
-            --plugin qt --output appimage
-          mkdir -p dist
-          mv VisualTC*.AppImage dist/VisualTC-x86_64.AppImage
-          # .deb: the same self-contained tree as the AppImage (private Qt
-          # 6.8 under /opt/visualtc, since Ubuntu LTS ships older Qt 6).
-          VERSION=$(grep -m1 -oP '^\s+VERSION \K[0-9.]+' CMakeLists.txt)
-          mkdir -p deb/DEBIAN deb/opt/visualtc deb/usr/bin deb/usr/share/applications \
-                   deb/usr/share/icons/hicolor/scalable/apps
-          cp -a AppDir/usr/. deb/opt/visualtc/
-          ln -s /opt/visualtc/bin/VisualTC deb/usr/bin/visualtc
-          sed 's|^Exec=.*|Exec=/opt/visualtc/bin/VisualTC %F|' packaging/linux/visualtc.desktop \
-            > deb/usr/share/applications/visualtc.desktop
-          cp resources/icons/app.svg deb/usr/share/icons/hicolor/scalable/apps/visualtc.svg
-          cat > deb/DEBIAN/control <<EOF
-          Package: visualtc
-          Version: ${VERSION}
-          Architecture: amd64
-          Maintainer: ${VISUALTC_MAINTAINER:-VisualTC Maintainers <maintainers@example.invalid>}
-          Depends: libc6 (>= 2.35), libgl1, libegl1, libfontconfig1, libfreetype6, libxkbcommon0, libxkbcommon-x11-0, libxcb-cursor0, libxcb-icccm4, libxcb-image0, libxcb-keysyms1, libxcb-randr0, libxcb-render-util0, libxcb-shape0, libxcb-xinerama0, libdbus-1-3
-          Section: science
-          Priority: optional
-          Description: VisualTC - DICOM Medical Image Viewer
-           Offline desktop DICOM viewer for CT, MR and other modalities:
-           spatial sorting, window/level, measurements, ROI in HU and MPR.
-          EOF
-          dpkg-deb --root-owner-group --build deb dist/visualtc_amd64.deb
-          dpkg-deb --info dist/visualtc_amd64.deb
+        run: packaging/linux/make_packages.sh build/${{ matrix.preset }} "$QT_ROOT_DIR/bin/qmake" dist
 
-      - name: Package (Windows installer)
+      - name: Test the Linux packages as a user would install them
+        if: runner.os == 'Linux'
+        timeout-minutes: 15
+        run: |
+          # Only what the packages carry: no CI Qt on the search paths, and the
+          # real X11 (xcb) platform plugin on a virtual display.
+          clean() { env -u LD_LIBRARY_PATH -u QT_PLUGIN_PATH -u QT_QPA_PLATFORM "$@"; }
+          # apt resolves the Depends: line like the Ubuntu App Center does.
+          sudo apt-get install -y ./dist/visualtc_amd64.deb
+          clean xvfb-run -a visualtc --mpr --screenshot deb.png phantom
+          test -s deb.png
+          sudo apt-get remove -y visualtc
+          # The AppImage carries the static runtime, so users need no libfuse2.
+          file dist/VisualTC-x86_64.AppImage | grep -Eq 'statically linked|static-pie linked'
+          clean APPIMAGE_EXTRACT_AND_RUN=1 xvfb-run -a ./dist/VisualTC-x86_64.AppImage --mpr --screenshot appimage.png phantom
+          test -s appimage.png
+
+      # ------------------------------------------------------------ Windows
+      - name: Package (installer)
         if: runner.os == 'Windows'
         shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force -Path stage | Out-Null
-          Copy-Item build/${{ matrix.preset }}/bin/Release/*.exe stage/
-          Copy-Item build/${{ matrix.preset }}/bin/Release/*.dll stage/ -ErrorAction SilentlyContinue
-          & "$env:QT_ROOT_DIR/bin/windeployqt.exe" --release --no-opengl-sw stage/VisualTC.exe
-          Copy-Item README.md, THIRD_PARTY_LICENSES.md stage/
-          choco install innosetup --no-progress -y
-          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DSourceDir="$PWD\stage" /DOutputDir="$PWD\dist" packaging/windows/visualtc.iss
+        env:
+          WINDOWS_CERTIFICATE_PFX: ${{ secrets.WINDOWS_CERTIFICATE_PFX }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        run: ./packaging/windows/make_installer.ps1 -BuildDir build/${{ matrix.preset }} -OutDir dist
 
-      - name: Package (macOS DMG)
+      - name: Test the installer as a user would run it
+        if: runner.os == 'Windows'
+        shell: pwsh
+        timeout-minutes: 15
+        run: |
+          $setup = Start-Process -FilePath dist/VisualTC-Setup-x64.exe -Wait -PassThru `
+            -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/TASKS="desktopicon,contextmenu,assocdcm"'
+          if ($setup.ExitCode -ne 0) { throw "Instalação falhou ($($setup.ExitCode))" }
+          # Per-user installation, no administrator rights. Run the installed
+          # copy as a user would: native Windows platform plugin and no CI Qt
+          # on PATH, so a DLL missing from the installer makes this step fail.
+          Remove-Item Env:QT_QPA_PLATFORM, Env:QT_PLUGIN_PATH -ErrorAction SilentlyContinue
+          $env:PATH = ($env:PATH -split ';' | Where-Object { $_ -and -not $_.StartsWith($env:QT_ROOT_DIR, 'OrdinalIgnoreCase') }) -join ';'
+          $dir = Join-Path $env:LOCALAPPDATA 'Programs/VisualTC'
+          $app = Start-Process -FilePath (Join-Path $dir 'VisualTC.exe') -Wait -PassThru `
+            -WorkingDirectory $PWD -ArgumentList '--mpr', '--screenshot', 'installed.png', 'phantom'
+          if ($app.ExitCode -ne 0 -or -not (Test-Path installed.png)) { throw "O VisualTC instalado não abriu ($($app.ExitCode))" }
+          if (-not (Test-Path 'HKCU:\Software\Classes\Drive\shell\VisualTC\command')) { throw "Menu de contexto ausente" }
+          # The uninstaller relaunches itself from %TEMP%: wait for the files to go.
+          Start-Process -FilePath (Join-Path $dir 'unins000.exe') -Wait -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES'
+          $deadline = (Get-Date).AddMinutes(3)
+          while ((Test-Path (Join-Path $dir 'VisualTC.exe')) -and (Get-Date) -lt $deadline) { Start-Sleep -Seconds 2 }
+          if (Test-Path (Join-Path $dir 'VisualTC.exe')) { throw "Desinstalação não removeu o programa" }
+          if (Test-Path 'HKCU:\Software\Classes\Drive\shell\VisualTC') { throw "Menu de contexto ficou após desinstalar" }
+
+      # ------------------------------------------------------------ macOS
+      - name: Bundle (macdeployqt)
         if: runner.os == 'macOS'
         run: |
           APP=build/${{ matrix.preset }}/bin/VisualTC.app
           "$QT_ROOT_DIR/bin/macdeployqt" "$APP" -executable="$APP/Contents/MacOS/visualtc-worker"
-          # Ad-hoc signature (replace with Developer ID + notarization for distribution, see docs/BUILD.md)
-          codesign --force --deep --sign - "$APP"
+          # tar keeps the symbolic links and permissions of the frameworks.
           mkdir -p dist
-          hdiutil create -volname VisualTC -srcfolder "$APP" -ov -format UDZO dist/VisualTC.dmg
+          tar -C "$(dirname "$APP")" -czf dist/VisualTC-${{ matrix.preset }}.app.tar.gz VisualTC.app
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: VisualTC-${{ matrix.preset }}
           path: |
             dist/*
             smoke.png
-          if-no-files-found: warn
+          if-no-files-found: error
+
+  macos-dmg:
+    name: macOS DMG (universal - Apple Silicon + Intel)
+    needs: build
+    runs-on: macos-15
+    env:
+      HAS_SIGNING_CERT: ${{ secrets.MACOS_CERTIFICATE_P12 != '' }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/download-artifact@v5
+        with:
+          pattern: VisualTC-macos-*
+          path: artifacts
+
+      - name: Unpack the two app bundles
+        run: |
+          mkdir -p arm64 x86_64
+          tar -C arm64 -xzf "$(find artifacts -name 'VisualTC-macos-arm64-release.app.tar.gz')"
+          tar -C x86_64 -xzf "$(find artifacts -name 'VisualTC-macos-x86_64-release.app.tar.gz')"
+
+      - name: Import the Developer ID certificate
+        if: env.HAS_SIGNING_CERT == 'true'
+        env:
+          MACOS_CERTIFICATE_P12: ${{ secrets.MACOS_CERTIFICATE_P12 }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+        run: |
+          KEYCHAIN="$RUNNER_TEMP/signing.keychain-db"
+          KEYCHAIN_PASSWORD=$(uuidgen)
+          echo "$MACOS_CERTIFICATE_P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security import "$RUNNER_TEMP/cert.p12" -P "$MACOS_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN"
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
+          rm -f "$RUNNER_TEMP/cert.p12"
+
+      - name: Build the universal DMG
+        env:
+          MACOS_SIGN_IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        run: |
+          python3 -m venv .venv
+          .venv/bin/pip install --quiet dmgbuild
+          export PATH="$PWD/.venv/bin:$PATH"
+          mkdir -p dist
+          packaging/macos/make_dmg.sh dist/VisualTC-macOS.dmg arm64/VisualTC.app x86_64/VisualTC.app
+
+      - name: Test the DMG on both architectures
+        run: |
+          hdiutil attach dist/VisualTC-macOS.dmg -mountpoint /Volumes/VisualTC-teste -nobrowse
+          APP=/Volumes/VisualTC-teste/VisualTC.app
+          test -L /Volumes/VisualTC-teste/Aplicativos
+          lipo -archs "$APP/Contents/MacOS/VisualTC" | grep -q x86_64
+          lipo -archs "$APP/Contents/MacOS/VisualTC" | grep -q arm64
+          # Loads every Qt framework and the Cocoa plugin, then exits.
+          env -u QT_QPA_PLATFORM "$APP/Contents/MacOS/VisualTC" --version
+          if arch -x86_64 /usr/bin/true 2>/dev/null; then
+            env -u QT_QPA_PLATFORM arch -x86_64 "$APP/Contents/MacOS/VisualTC" --version
+          else
+            echo "Rosetta indisponível neste runner: x86_64 já testado no job macOS Intel."
+          fi
+          hdiutil detach /Volumes/VisualTC-teste
+
+      - uses: actions/upload-artifact@v5
+        with:
+          name: VisualTC-macOS-dmg
+          path: dist/VisualTC-macOS.dmg
+          if-no-files-found: error
+
+  release:
+    name: Publish the release (tags v*)
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [build, macos-dmg]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v5
+        with:
+          path: artifacts
+      - name: Check that the tag matches the version in CMakeLists.txt
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          CMAKE_VERSION=$(grep -m1 -oP '^\s+VERSION \K[0-9.]+' CMakeLists.txt)
+          if [ "$VERSION" != "$CMAKE_VERSION" ]; then
+            echo "A tag $GITHUB_REF_NAME não corresponde a VERSION $CMAKE_VERSION do CMakeLists.txt"
+            exit 1
+          fi
+      - name: Collect the installers
+        run: |
+          mkdir -p release
+          for f in VisualTC-Setup-x64.exe VisualTC-macOS.dmg visualtc_amd64.deb VisualTC-x86_64.AppImage; do
+            found=$(find artifacts -type f -name "$f" | head -n 1)
+            test -n "$found" || { echo "Faltando: $f"; exit 1; }
+            cp "$found" release/
+          done
+          (cd release && sha256sum * > SHA256SUMS.txt)
+          ls -la release
+      - name: Create the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          sed -e "s/@VERSION@/$VERSION/g" -e "s|@REPO@|$GITHUB_REPOSITORY|g" \
+            packaging/release-notes.md > release-notes.md
+          gh release create "$GITHUB_REF_NAME" release/* --title "VisualTC $VERSION" \
+            --notes-file release-notes.md --latest
 
   sanitizers-and-analysis:
     name: ASan/UBSan + clang-tidy (Ubuntu)
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: System packages
         run: |
           sudo apt-get update
@@ -176,6 +303,7 @@ jobs:
       - uses: jurplel/install-qt-action@v4
         with:
           version: ${{ env.QT_VERSION }}
+          arch: linux_gcc_64
           cache: true
       - uses: lukka/run-vcpkg@v11
         with:
@@ -189,4 +317,4 @@ jobs:
       - name: clang-tidy (core library)
         run: |
           run-clang-tidy -p build/linux-debug-asan -quiet \
-            "src/(core|dicom|imaging|measurements|mpr|synchronization)/.*\.cpp$"
+            "src/(core|dicom|imaging|measurements|mpr|synchronization|archive)/.*\.cpp$"

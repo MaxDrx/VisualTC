@@ -18,6 +18,7 @@ class QDockWidget;
 class QLabel;
 class QMenu;
 class QProgressBar;
+class QTimer;
 class QToolButton;
 
 namespace vtc {
@@ -27,6 +28,7 @@ class ExtractionArea;
 class FrameProvider;
 class ImportTask;
 class SeriesBrowser;
+class SeriesDock;
 class ThumbnailProvider;
 class ViewerGrid;
 class MprSession;
@@ -54,6 +56,9 @@ public:
     void setAutomation(const AutomationOptions& options);
 
 protected:
+    // Documents handed over by the system (macOS QFileOpenEvent: double-click
+    // on a .dcm, "Abrir com", a CD folder dropped on the Dock icon).
+    bool eventFilter(QObject* watched, QEvent* event) override;
     void closeEvent(QCloseEvent* event) override;
     void dragEnterEvent(QDragEnterEvent* event) override;
     void dropEvent(QDropEvent* event) override;
@@ -99,7 +104,7 @@ private:
     ImportTask* import_ = nullptr;
     ViewerGrid* grid_ = nullptr;
     SeriesBrowser* browser_ = nullptr;
-    QDockWidget* browserDock_ = nullptr;
+    SeriesDock* browserDock_ = nullptr;
 
     QLabel* cursorLabel_ = nullptr;
     QLabel* infoLabel_ = nullptr;
@@ -153,6 +158,8 @@ private:
     // Extracted copies of archive members -> "exame.zip › pasta/arquivo".
     std::map<std::string, std::string> displayNames_;
     std::unique_ptr<ExtractionArea> extraction_;
+    QTimer* fileOpenTimer_ = nullptr;
+    QStringList fileOpenQueue_;
     bool discardImport_ = false;
     QAction* issuesAction_ = nullptr;
 

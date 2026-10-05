@@ -63,6 +63,9 @@ public:
     QByteArray windowGeometry() const;
     QByteArray windowState() const;
     void saveWindow(const QByteArray& geometry, const QByteArray& state);
+    bool seriesPanelCollapsed() const;
+    int seriesPanelWidth() const;  // 0 = default
+    void setSeriesPanel(bool collapsed, int width);
 
 private:
     AppSettings() = default;

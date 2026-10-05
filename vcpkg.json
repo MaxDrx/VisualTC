@@ -20,7 +20,6 @@
   ],
   "overrides": [
     { "name": "gdcm", "version": "3.0.24" },
-    { "name": "libarchive", "version": "3.8.7" },
     { "name": "catch2", "version": "3.7.1" }
   ]
 }

@@ -27,3 +27,6 @@ Thumbs.db
 *.dcm
 /exames/
 /phantom/
+
+# Tools downloaded by packaging/linux/make_packages.sh
+/.packaging-tools/

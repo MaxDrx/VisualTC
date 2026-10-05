@@ -1,13 +1,17 @@
 // Integration tests of the Qt layer, run headless (QT_QPA_PLATFORM=offscreen).
 #include <QAction>
 #include <QDir>
+#include <QFileOpenEvent>
 #include <QMenu>
 #include <QSignalSpy>
 #include <QStandardPaths>
+#include <QScrollBar>
 #include <QTemporaryDir>
+#include <QToolButton>
 #include <QtTest>
 #include <cmath>
 
+#include "app/AppSettings.h"
 #include "core/PathUtil.h"
 #include "dicom/DicomParser.h"
 #include "dicom/DicomStudy.h"
@@ -17,6 +21,8 @@
 #include "io/ExtractionArea.h"
 #include "io/ImportTask.h"
 #include "ui/MainWindow.h"
+#include "ui/SeriesBrowser.h"
+#include "ui/SeriesDock.h"
 #include "measurements/MeasurementMath.h"
 #include "mpr/ImageVolume.h"
 #include "mpr/MprSession.h"
@@ -338,6 +344,9 @@ private Q_SLOTS:
         vp.show();
         vp.setSource(std::make_shared<StackSource>(series, &provider, false));
         QTRY_VERIFY_WITH_TIMEOUT(!vp.errorText().isEmpty(), 20000);
+        // The prefetch of the neighbours may still be finishing (slow under
+        // sanitizers): count once the queue is empty, then it must not grow.
+        QTRY_COMPARE_WITH_TIMEOUT(provider.pendingCount(), 0, 20000);
         const int afterError = provider.decodeCount();
         QTest::qWait(800);
         QCoreApplication::processEvents();
@@ -508,6 +517,97 @@ private Q_SLOTS:
             QVERIFY(second.sessionDir() != liveDir);
         }
         QVERIFY(!QDir(liveDir).exists());  // removed when the program closes
+    }
+
+    void seriesPanelCollapsesAndRemembersWidth() {
+        QStandardPaths::setTestModeEnabled(true);
+        auto& settings = AppSettings::instance();
+        settings.saveWindow({}, {});
+        settings.setSeriesPanel(false, 300);
+        auto* window = new MainWindow;
+        window->resize(1300, 800);
+        window->show();
+        QVERIFY(QTest::qWaitForWindowExposed(window));
+        auto* dock = window->findChild<SeriesDock*>();
+        auto* grid = window->findChild<ViewerGrid*>();
+        QVERIFY(dock != nullptr && grid != nullptr);
+        QTRY_COMPARE(dock->width(), 300);
+        dock->browser()->setDatabase(db_);
+        const int gridWide = grid->width();
+
+        // « collapses into the rail; the images gain the width.
+        auto* toggle = dock->findChild<QToolButton*>(QStringLiteral("seriesDockToggle"));
+        QVERIFY(toggle != nullptr);
+        QTest::mouseClick(toggle, Qt::LeftButton);
+        QVERIFY(dock->isCollapsed());
+        QTRY_COMPARE(dock->width(), SeriesDock::kRailWidth);
+        QTRY_VERIFY(grid->width() >= gridWide + 300 - SeriesDock::kRailWidth - 2);
+        QAction* panelAction = nullptr;
+        for (auto* a : window->findChildren<QAction*>()) {
+            if (a->shortcut() == QKeySequence(Qt::Key_F2)) {
+                panelAction = a;
+            }
+        }
+        QVERIFY(panelAction != nullptr && !panelAction->isChecked());
+        auto* rail = dock->findChild<QWidget*>(QStringLiteral("seriesRail"));
+        QVERIFY(rail != nullptr && rail->isVisible());
+        QVERIFY(!rail->grab().isNull());
+
+        // A click anywhere on the rail brings the panel back at its width.
+        QTest::mouseClick(rail, Qt::LeftButton, {}, QPoint(rail->width() / 2, rail->height() / 2));
+        QVERIFY(!dock->isCollapsed());
+        QVERIFY(panelAction->isChecked());
+        QTRY_COMPARE(dock->width(), 300);
+
+        // Dragged narrow: thumbnails only, no sideways scrolling, and the
+        // narrow width is what F2 restores.
+        window->resizeDocks({dock}, {SeriesDock::kMinExpandedWidth + 16}, Qt::Horizontal);
+        QTRY_COMPARE(dock->width(), SeriesDock::kMinExpandedWidth + 16);
+        QCOMPARE(dock->expandedWidth(), SeriesDock::kMinExpandedWidth + 16);
+        QVERIFY(!dock->browser()->horizontalScrollBar()->isVisible());
+        QVERIFY(!dock->browser()->grab().isNull());
+        QTest::keyClick(window, Qt::Key_F2);
+        QVERIFY(dock->isCollapsed());
+        QTRY_COMPARE(dock->width(), SeriesDock::kRailWidth);
+        QTest::keyClick(window, Qt::Key_F2);
+        QVERIFY(!dock->isCollapsed());
+        QTRY_COMPARE(dock->width(), SeriesDock::kMinExpandedWidth + 16);
+        QTest::keyClick(window, Qt::Key_F2);
+        QTRY_COMPARE(dock->width(), SeriesDock::kRailWidth);
+
+        // Remembered across sessions: the next window opens collapsed and
+        // expands to the same width.
+        window->close();
+        QCOMPARE(settings.seriesPanelCollapsed(), true);
+        QCOMPARE(settings.seriesPanelWidth(), SeriesDock::kMinExpandedWidth + 16);
+        delete window;
+        window = new MainWindow;
+        window->resize(1300, 800);
+        window->show();
+        QVERIFY(QTest::qWaitForWindowExposed(window));
+        dock = window->findChild<SeriesDock*>();
+        QVERIFY(dock->isCollapsed());
+        QTRY_COMPARE(dock->width(), SeriesDock::kRailWidth);
+        dock->setCollapsed(false);
+        QTRY_COMPARE(dock->width(), SeriesDock::kMinExpandedWidth + 16);
+        delete window;
+        settings.saveWindow({}, {});
+        settings.setSeriesPanel(false, 0);
+    }
+
+    void systemFileOpenEventImportsExam() {
+        // macOS hands documents over as QFileOpenEvent ("Abrir com", a CD
+        // folder dropped on the Dock icon, double-click on a .dcm).
+        QStandardPaths::setTestModeEnabled(true);
+        auto* window = new MainWindow;
+        window->show();
+        auto* browser = window->findChild<SeriesBrowser*>();
+        QVERIFY(browser != nullptr);
+        QCOMPARE(browser->seriesCount(), 0);
+        QFileOpenEvent open(tmp_.path());
+        QCoreApplication::sendEvent(qApp, &open);
+        QTRY_COMPARE_WITH_TIMEOUT(browser->seriesCount(), 2, 30000);
+        delete window;
     }
 
     void cleanupTestCase() {

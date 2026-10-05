@@ -1,0 +1,288 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Baixar o VisualTC</title>
+<meta name="description" content="VisualTC: visualizador de imagens médicas DICOM para Windows, Mac e Linux. Gratuito e funciona sem internet.">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<style>
+  :root {
+    --bg: #f4f6f8;
+    --surface: #ffffff;
+    --surface-2: #eef2f5;
+    --border: #d9dfe5;
+    --text: #1e2328;
+    --muted: #5a6470;
+    --accent: #137f9c;
+    --accent-strong: #0e6880;
+    --accent-soft: #dff2f7;
+    --on-accent: #ffffff;
+    --warn-bg: #fff6e5;
+    --warn-border: #f0cf8f;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #151515;
+      --surface: #1f2123;
+      --surface-2: #26292c;
+      --border: #34383c;
+      --text: #eaeaea;
+      --muted: #a9b0b6;
+      --accent: #2eb4d6;
+      --accent-strong: #5cc8e3;
+      --accent-soft: #173a44;
+      --on-accent: #08161a;
+      --warn-bg: #2b2416;
+      --warn-border: #6b5424;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #151515; --surface: #1f2123; --surface-2: #26292c; --border: #34383c; --text: #eaeaea;
+    --muted: #a9b0b6; --accent: #2eb4d6; --accent-strong: #5cc8e3; --accent-soft: #173a44;
+    --on-accent: #08161a; --warn-bg: #2b2416; --warn-border: #6b5424; color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 16px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, Ubuntu, "Helvetica Neue", Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  main { max-width: 1080px; margin: 0 auto; padding: 0 16px 48px; }
+  a { color: var(--accent); }
+  .hero { text-align: center; padding: 48px 0 32px; }
+  .hero img { width: 96px; height: 96px; }
+  .hero h1 { font-size: 2.4rem; margin: 12px 0 4px; letter-spacing: -0.02em; }
+  .hero p.tagline { margin: 0 auto; max-width: 560px; color: var(--muted); font-size: 1.1rem; }
+  .cta { margin-top: 28px; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 10px;
+    background: var(--accent); color: var(--on-accent); text-decoration: none; font-weight: 600;
+    border-radius: 10px; padding: 12px 20px; border: 1px solid transparent; min-height: 48px;
+    transition: background-color .15s ease;
+  }
+  .btn:hover { background: var(--accent-strong); }
+  .btn:focus-visible { outline: 3px solid var(--accent-soft); outline-offset: 2px; }
+  .btn svg { width: 22px; height: 22px; flex: none; }
+  .btn.big { font-size: 1.2rem; padding: 16px 30px; min-height: 60px; border-radius: 12px; }
+  .btn.secondary { background: transparent; color: var(--accent); border-color: var(--border); }
+  .btn.secondary:hover { background: var(--accent-soft); }
+  .cta small { color: var(--muted); }
+  .grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin-top: 8px; }
+  .card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 22px;
+    display: flex; flex-direction: column; gap: 14px; position: relative;
+  }
+  .card.detected { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+  .card h2 { margin: 0; font-size: 1.3rem; display: flex; align-items: center; gap: 10px; }
+  .card h2 svg { width: 26px; height: 26px; color: var(--accent); flex: none; }
+  .card .req { margin: -8px 0 0; color: var(--muted); font-size: .92rem; }
+  .card h2 + .req { min-height: 2.9em; }  /* download buttons line up across the cards */
+  .card .btn { width: 100%; }
+  .card ol { margin: 0; padding-left: 1.3em; }
+  .card li { margin: 4px 0; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .88em;
+    background: var(--surface-2); border-radius: 4px; padding: 1px 4px; overflow-wrap: anywhere; }
+  .badge {
+    display: none; font-size: .78rem; font-weight: 600; color: var(--accent); background: var(--accent-soft);
+    border-radius: 999px; padding: 2px 10px; position: absolute; top: 16px; right: 16px;
+  }
+  .card.detected .badge { display: inline-block; }
+  section { margin-top: 40px; }
+  section > h2 { font-size: 1.4rem; margin: 0 0 12px; }
+  .ways { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+  .way { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 18px; }
+  .way h3 { margin: 0 0 6px; font-size: 1.05rem; }
+  .way p { margin: 0; color: var(--muted); }
+  details {
+    background: var(--warn-bg); border: 1px solid var(--warn-border); border-radius: 12px; padding: 14px 18px;
+    margin-top: 12px;
+  }
+  details summary { cursor: pointer; font-weight: 600; }
+  details p, details ol { margin: 10px 0 0; }
+  footer { margin-top: 48px; padding-top: 20px; border-top: 1px solid var(--border); color: var(--muted); font-size: .95rem; }
+  footer p { margin: 6px 0; }
+  .notice {
+    display: none; margin: 20px auto 0; max-width: 560px; background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; padding: 12px 16px; color: var(--muted);
+  }
+  @media (max-width: 860px) {
+    .grid, .ways { grid-template-columns: 1fr; }
+    .card h2 + .req { min-height: 0; }
+    .hero { padding-top: 32px; }
+    .hero h1 { font-size: 2rem; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <header class="hero">
+    <img src="icon.svg" alt="" width="96" height="96">
+    <h1>VisualTC</h1>
+    <p class="tagline">Visualizador de imagens médicas DICOM: tomografia, ressonância, raio-X e ultrassom.
+      Gratuito e funciona sem internet.</p>
+    <div class="cta">
+      <a id="primary" class="btn big" href="#baixar">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 19h14"/></svg>
+        <span id="primary-label">Baixar o VisualTC</span>
+      </a>
+      <small id="primary-hint">Escolha abaixo o seu sistema.</small>
+    </div>
+    <p id="mobile-notice" class="notice">O VisualTC é um programa para computador. Abra esta página no
+      computador (Windows, Mac ou Linux) onde você vai ver os exames.</p>
+  </header>
+
+  <div class="grid" id="baixar">
+    <article class="card" id="card-windows">
+      <span class="badge">Seu computador</span>
+      <h2><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="1.5"/><path d="M8 20h8M12 16v4"/></svg>Windows</h2>
+      <p class="req">Windows 10 ou 11 (64 bits)</p>
+      <a class="btn" data-asset="VisualTC-Setup-x64.exe" href="#">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 19h14"/></svg>
+        Baixar para Windows
+      </a>
+      <ol>
+        <li>Clique duas vezes no arquivo baixado.</li>
+        <li>Clique em <b>Avançar</b> e depois em <b>Concluir</b>. Não precisa de senha de administrador.</li>
+        <li>O VisualTC abre sozinho. Depois, use o ícone na área de trabalho.</li>
+      </ol>
+    </article>
+
+    <article class="card" id="card-mac">
+      <span class="badge">Seu computador</span>
+      <h2><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="5" width="16" height="11" rx="1.5"/><path d="M2 19h20"/></svg>Mac</h2>
+      <p class="req">macOS 12 ou mais novo · chip Apple (M1, M2, M3, M4…) ou Intel</p>
+      <a class="btn" data-asset="VisualTC-macOS.dmg" href="#">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 19h14"/></svg>
+        Baixar para Mac
+      </a>
+      <ol>
+        <li>Clique duas vezes no arquivo baixado.</li>
+        <li>Na janela que abrir, arraste o <b>VisualTC</b> para a pasta <b>Aplicativos</b>.</li>
+        <li>Abra o VisualTC pelo Launchpad ou pela pasta Aplicativos.</li>
+      </ol>
+    </article>
+
+    <article class="card" id="card-linux">
+      <span class="badge">Seu computador</span>
+      <h2><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="1.5"/><path d="m7 9 3 3-3 3M12 15h5"/></svg>Linux</h2>
+      <p class="req">Ubuntu 22.04 ou mais novo, Debian 12, Linux Mint 21 e outras (64 bits)</p>
+      <a class="btn" data-asset="visualtc_amd64.deb" href="#">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 19h14"/></svg>
+        Ubuntu, Debian, Mint (.deb)
+      </a>
+      <ol>
+        <li>Clique duas vezes no arquivo baixado.</li>
+        <li>A Central de Programas abre: clique em <b>Instalar</b>.</li>
+        <li>Procure <b>VisualTC</b> no menu de aplicativos.</li>
+      </ol>
+      <p class="req" style="margin:0">Não apareceu <b>Instalar</b>? No Terminal, na pasta Downloads:
+        <code>sudo apt install ./visualtc_amd64.deb</code></p>
+      <a class="btn secondary" data-asset="VisualTC-x86_64.AppImage" href="#">Outras distribuições (AppImage)</a>
+      <p class="req" style="margin:0">AppImage: clique com o botão direito no arquivo › <b>Propriedades</b> ›
+        marque <b>Permitir executar como programa</b>; depois, clique duas vezes. Não instala nada.</p>
+    </article>
+  </div>
+
+  <section>
+    <h2>Para abrir um exame</h2>
+    <div class="ways">
+      <div class="way">
+        <h3>Arraste para a janela</h3>
+        <p>A pasta do CD ou do pendrive, ou o arquivo compactado recebido (ZIP, RAR, 7z).</p>
+      </div>
+      <div class="way">
+        <h3>Use os botões</h3>
+        <p><b>Abrir</b> para arquivos e exames compactados, <b>Pasta</b> para o CD ou uma pasta.</p>
+      </div>
+      <div class="way">
+        <h3>Botão direito (Windows)</h3>
+        <p>No CD, no pendrive, numa pasta ou num ZIP: <b>Abrir no VisualTC</b>.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Apareceu um aviso na primeira vez?</h2>
+    <details>
+      <summary>Windows: “O Windows protegeu o computador”</summary>
+      <p>Aparece com programas novos, que ainda não são conhecidos pelo Windows.</p>
+      <ol>
+        <li>Clique em <b>Mais informações</b>.</li>
+        <li>Clique em <b>Executar assim mesmo</b>.</li>
+      </ol>
+    </details>
+    <details>
+      <summary>Mac: “não é possível verificar o desenvolvedor” ou “o VisualTC não foi aberto”</summary>
+      <ol>
+        <li>Feche o aviso e abra <b>Ajustes do Sistema › Privacidade e Segurança</b>.</li>
+        <li>Desça até a mensagem sobre o VisualTC e clique em <b>Abrir Mesmo Assim</b>.</li>
+        <li>Confirme com a sua senha. Isso só é necessário uma vez.</li>
+      </ol>
+    </details>
+  </section>
+
+  <footer>
+    <p>O VisualTC funciona sem internet: as imagens e os dados dos pacientes não saem do computador.</p>
+    <p>Versões anteriores e notas de cada versão:
+      <a id="all-releases" href="#">todas as versões</a> ·
+      <a id="source" href="#">código-fonte</a></p>
+  </footer>
+</main>
+<script>
+(function () {
+  // Filled in by the deploy workflow (owner/repository on GitHub). In a local
+  // preview it falls back to the address of a GitHub Pages site.
+  var repo = "__REPO__";
+  if (repo.indexOf("__") === 0) {
+    var host = location.hostname.match(/^([^.]+)\.github\.io$/);
+    var first = location.pathname.split("/").filter(Boolean)[0];
+    repo = host && first ? host[1] + "/" + first : "";
+  }
+  var base = repo ? "https://github.com/" + repo : "";
+  var links = document.querySelectorAll("[data-asset]");
+  for (var i = 0; i < links.length; i++) {
+    links[i].href = base ? base + "/releases/latest/download/" + links[i].getAttribute("data-asset") : "#baixar";
+  }
+  if (base) {
+    document.getElementById("all-releases").href = base + "/releases";
+    document.getElementById("source").href = base;
+  }
+
+  // Suggest the download for this computer.
+  var ua = navigator.userAgent || "";
+  var platform = (navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || "";
+  var mobile = /Android|iPhone|iPad|iPod/i.test(ua) || (navigator.userAgentData && navigator.userAgentData.mobile);
+  var os = null;
+  if (!mobile) {
+    if (/Win/i.test(platform) || /Windows/i.test(ua)) os = "windows";
+    else if (/Mac/i.test(platform) || /Macintosh/i.test(ua)) os = "mac";
+    else if (/Linux|X11|CrOS/i.test(platform + " " + ua)) os = "linux";
+  }
+  var primary = document.getElementById("primary");
+  var label = document.getElementById("primary-label");
+  var hint = document.getElementById("primary-hint");
+  if (mobile) {
+    document.getElementById("mobile-notice").style.display = "block";
+    hint.textContent = "Disponível para Windows, Mac e Linux.";
+    return;
+  }
+  if (!os) return;
+  var card = document.getElementById("card-" + os);
+  card.classList.add("detected");
+  var asset = card.querySelector("[data-asset]");
+  primary.href = asset.href;
+  label.textContent = { windows: "Baixar para Windows", mac: "Baixar para Mac", linux: "Baixar para Linux (.deb)" }[os];
+  hint.textContent = {
+    windows: "Windows 10 ou 11 · instalador com poucos cliques, sem senha de administrador",
+    mac: "Um único arquivo para Macs com chip Apple e com Intel",
+    linux: "Para Ubuntu, Debian e Mint. Outras distribuições: AppImage, logo abaixo"
+  }[os];
+})();
+</script>
+</body>
+</html>

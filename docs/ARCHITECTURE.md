@@ -73,6 +73,32 @@ O VisualTC é dividido em três camadas com dependências em um único sentido:
 7. O **Viewport** aplica rescale → VOI → (inversão) via LUT de 8 bits
    pré-calculada (`DisplayRenderer`) e desenha com `QPainter`.
 
+### Exames compactados
+
+Na varredura, todo arquivo que não é DICOM passa por `detectArchive`
+(assinaturas: ZIP, 7z, RAR, gzip, bzip2, xz, zstd, TAR `ustar`, ISO
+`CD001`). Os reconhecidos são expandidos pelo `ArchiveExpander` do
+`ImportTask`, que chama `DecoderClient::extract` — a operação **Extract** do
+worker, ou seja, a libarchive também roda no processo isolado. O
+`ArchiveExtractor` (núcleo, sem Qt):
+
+- nunca usa o nome interno como caminho: cada membro DICOM vira um arquivo
+  numerado numa pasta plana; links, diretórios e dispositivos são ignorados;
+  membros que não parecem DICOM (`looksLikeDicomBytes`) não são gravados;
+- expande arquivos compactados aninhados até 3 níveis;
+- aplica limites (total, por membro, número de membros, espaço livre mínimo,
+  taxa de compressão) e cancelamento;
+- devolve `NeedsPassword`/`WrongPassword`: o `ImportTask` pede a senha na
+  thread da interface (`QInputDialog`) e tenta de novo, até 3 vezes.
+
+A resposta do worker é validada (todo caminho devolvido precisa estar dentro
+da pasta de destino). Os arquivos extraídos seguem o fluxo normal (passos
+2–7) e guardam um nome de exibição (`exame.zip › DICOM/IM1`) usado nas
+informações DICOM. A **ExtractionArea** cria
+`<cache do usuário>/extracoes/sessao-<id>` com um `QLockFile`; a pasta é
+apagada em "Fechar estudos" e ao sair, e as sessões órfãs (programa
+interrompido) são apagadas na próxima abertura.
+
 ### Geometria (o centro do projeto)
 
 - `ImagePositionPatient` é o centro do primeiro pixel; `ImageOrientationPatient`
@@ -127,7 +153,7 @@ JPEG com precisão inválida, divisão por zero no RLE). Por isso:
 
 - Todo parse/decodificação feito pela aplicação acontece no
   `visualtc-worker` (protocolo `[u64 tamanho][payload]`, operações Parse,
-  Decode e Ping). Se o worker morre, o `DecoderClient` relata erro para
+  Decode, Extract e Ping). Se o worker morre, o `DecoderClient` relata erro para
   aquele arquivo e reinicia o processo; o visualizador continua.
 - Toda resposta do worker é validada (dimensões, contagem de bytes, totais
   dentro do limite) antes de virar objeto na aplicação.
@@ -168,23 +194,26 @@ VisualTC/
 ├── src/
 │   ├── core/          utilitários sem Qt (log, threads, vetores, caminhos UTF-8)
 │   ├── dicom/         preflight, parser, scanner, sorter, geometria, decoder, protocolo do worker
+│   ├── archive/       extração segura de exames compactados (libarchive)
 │   ├── imaging/       DecodedFrame, VOI/LUT, orientação, cache LRU
 │   ├── measurements/  matemática de medidas e estatísticas de ROI
 │   ├── mpr/           volume, reslicer, geometria MPR (+ MprSession/MprSource na UI)
 │   ├── synchronization/ sincronização espacial e reference lines
 │   ├── worker/        visualtc-worker
-│   ├── io/            DecoderClient, FrameProvider, ImportTask, miniaturas
+│   ├── io/            DecoderClient, FrameProvider, ImportTask, ExtractionArea, miniaturas
 │   ├── viewer2d/      Viewport, fontes de imagem, anotações
-│   ├── ui/            janela principal e diálogos
+│   ├── ui/            janela principal, painel de séries recolhível (SeriesDock), diálogos
 │   ├── export/        PNG/JPEG/TIFF
 │   └── app/           main, tema, preferências
 ├── tests/  unit/ (Catch2), ui/ (QtTest), fixtures/ (gerador DICOM sintético)
-├── tools/  make_phantom (exame sintético), vtc_bench (desempenho)
+├── tools/  make_phantom (exame sintético), vtc_bench (desempenho), fundo do DMG
 ├── resources/icons/   ícones SVG originais
-├── packaging/         linux (.desktop), macos (Info.plist, .icns), windows (.rc, .ico, Inno Setup)
+├── packaging/         scripts e arquivos dos pacotes: linux (.deb + AppImage), macos (DMG universal),
+│                      windows (instalador Inno Setup), notas de versão
+├── site/              página de download (GitHub Pages)
 ├── scripts/           build_deps_linux.sh
 ├── docs/              esta documentação + screenshots
-└── .github/workflows/ CI Windows/macOS/Ubuntu + ASan/UBSan + clang-tidy
+└── .github/workflows/ CI Windows/macOS (ARM e Intel)/Ubuntu, pacotes, versão publicada, página de download
 ```
 
 ## D. Dependências e versões fixadas
@@ -197,12 +226,15 @@ VisualTC/
 | ↳ CharLS (embutido no GDCM) | 2.0 | BSD-3-Clause | JPEG-LS |
 | ↳ IJG libjpeg 6b modificada (embutida) | — | IJG | JPEG 8/12/16 bits |
 | ↳ zlib, expat (embutidos) | — | zlib / MIT | Deflate, dicionários |
+| libarchive | 3.8.x (3.8.7 no build local) | BSD-2-Clause | exames compactados |
+| ↳ zstd, bzip2, liblzma, zlib | 1.5.7 / 1.0.8 / 5.x / 1.3 | BSD-3 / bzip2 / 0BSD / zlib | algoritmos de compressão |
+| ↳ OpenSSL libcrypto (Windows, Linux) | 3.x | Apache-2.0 | ZIP com senha AES (macOS: CommonCrypto) |
 | Catch2 | 3.7.1 | BSL-1.0 | somente testes |
 | VTK (planejado, fase 5) | 9.3 | BSD-3-Clause | volume rendering |
 | DCMTK (planejado, fase PACS) | 3.6.8 | BSD-3-Clause | rede DICOM |
 
 O `vcpkg.json` fixa `builtin-baseline` (vcpkg 2026.07.29) e `overrides` para
-GDCM 3.0.24 e Catch2 3.7.1; o Qt é fixado em 6.8.3 no CI.
+GDCM 3.0.24 e Catch2 3.7.1 (a libarchive segue a baseline: 3.8.x); o Qt é fixado em 6.8.3 no CI.
 
 ## E. Roadmap
 

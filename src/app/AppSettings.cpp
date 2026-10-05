@@ -103,4 +103,11 @@ void AppSettings::saveWindow(const QByteArray& geometry, const QByteArray& state
     setValue("ui/state", state);
 }
 
+bool AppSettings::seriesPanelCollapsed() const { return value("ui/seriesPanelCollapsed", false).toBool(); }
+int AppSettings::seriesPanelWidth() const { return value("ui/seriesPanelWidth", 0).toInt(); }
+void AppSettings::setSeriesPanel(bool collapsed, int width) {
+    setValue("ui/seriesPanelCollapsed", collapsed);
+    setValue("ui/seriesPanelWidth", width);
+}
+
 }  // namespace vtc

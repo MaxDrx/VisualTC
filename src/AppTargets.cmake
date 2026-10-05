@@ -15,6 +15,7 @@ set(VISUALTC_UI_SOURCES
     ui/Icons.cpp
     ui/MainWindow.cpp
     ui/SeriesBrowser.cpp
+    ui/SeriesDock.cpp
     ui/ViewerGrid.cpp
     ui/PreferencesDialog.cpp
     ui/HistogramDialog.cpp
@@ -77,6 +78,9 @@ qt_add_resources(VisualTC "visualtc_resources"
         ${CMAKE_SOURCE_DIR}/resources/icons/delete.svg
         ${CMAKE_SOURCE_DIR}/resources/icons/fit.svg
         ${CMAKE_SOURCE_DIR}/resources/icons/info.svg
+        ${CMAKE_SOURCE_DIR}/resources/icons/sidebar.svg
+        ${CMAKE_SOURCE_DIR}/resources/icons/collapse-left.svg
+        ${CMAKE_SOURCE_DIR}/resources/icons/collapse-right.svg
 )
 target_link_libraries(VisualTC PRIVATE visualtc_ui)
 add_dependencies(VisualTC visualtc-worker)
@@ -89,7 +93,9 @@ set_target_properties(VisualTC PROPERTIES
     MACOSX_BUNDLE_SHORT_VERSION_STRING ${PROJECT_VERSION}
     MACOSX_BUNDLE_INFO_PLIST ${CMAKE_SOURCE_DIR}/packaging/macos/Info.plist.in)
 if(WIN32)
-    target_sources(VisualTC PRIVATE ${CMAKE_SOURCE_DIR}/packaging/windows/visualtc.rc)
+    # Icon and the version shown in Explorer (Properties > Details).
+    configure_file(${CMAKE_SOURCE_DIR}/packaging/windows/visualtc.rc.in ${CMAKE_BINARY_DIR}/visualtc.rc @ONLY)
+    target_sources(VisualTC PRIVATE ${CMAKE_BINARY_DIR}/visualtc.rc)
 endif()
 if(APPLE)
     # The isolated decoder lives next to the executable inside the bundle.

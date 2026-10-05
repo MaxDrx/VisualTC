@@ -1,0 +1,8 @@
+# Windows tools read these with CRLF line endings.
+*.iss  text eol=crlf
+*.ps1  text eol=crlf
+# Shell scripts must keep LF to run on Linux/macOS.
+*.sh   text eol=lf
+*.png  binary
+*.icns binary
+*.ico  binary

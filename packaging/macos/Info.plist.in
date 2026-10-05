@@ -24,6 +24,25 @@
             <key>CFBundleTypeExtensions</key><array><string>dcm</string><string>dicom</string></array>
             <key>LSHandlerRank</key><string>Alternate</string>
         </dict>
+        <!-- Exames compactados: aparecem em "Abrir com" sem mudar o programa padrão -->
+        <dict>
+            <key>CFBundleTypeName</key><string>Exame compactado</string>
+            <key>CFBundleTypeRole</key><string>Viewer</string>
+            <key>CFBundleTypeExtensions</key>
+            <array>
+                <string>zip</string><string>7z</string><string>rar</string><string>tar</string>
+                <string>tgz</string><string>gz</string><string>bz2</string><string>xz</string>
+                <string>zst</string><string>iso</string>
+            </array>
+            <key>LSHandlerRank</key><string>Alternate</string>
+        </dict>
+        <!-- Pasta do CD/pendrive arrastada para o ícone no Dock -->
+        <dict>
+            <key>CFBundleTypeName</key><string>Pasta de exame</string>
+            <key>CFBundleTypeRole</key><string>Viewer</string>
+            <key>LSItemContentTypes</key><array><string>public.folder</string></array>
+            <key>LSHandlerRank</key><string>Alternate</string>
+        </dict>
     </array>
 </dict>
 </plist>
