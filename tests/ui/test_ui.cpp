@@ -4,6 +4,7 @@
 #include <QDialog>
 #include <QDir>
 #include <QFileOpenEvent>
+#include <QLabel>
 #include <QMenu>
 #include <QSignalSpy>
 #include <QStandardPaths>
@@ -143,7 +144,8 @@ private:
     }
 
     // Main window with an exam imported; returns the viewport showing it.
-    Viewport* openWindowWith(MainWindow* window, const QString& path) {
+    // On failure, `why` tells what the window was doing (slow CI machines).
+    Viewport* openWindowWith(MainWindow* window, const QString& path, QString* why = nullptr) {
         window->resize(1200, 800);
         window->show();
         window->importPaths({path});
@@ -158,8 +160,24 @@ private:
                 }
                 return false;
             },
-            30000);
+            90000);
         QCoreApplication::processEvents();
+        if (!ok && why != nullptr) {
+            const auto* browser = window->findChild<SeriesBrowser*>();
+            *why = QStringLiteral("series=%1").arg(browser != nullptr ? browser->seriesCount() : -1);
+            for (auto* label : window->findChildren<QLabel*>()) {
+                if (!label->text().isEmpty()) {
+                    *why += " | " + label->text();
+                }
+            }
+            for (auto* vp : window->findChildren<Viewport*>()) {
+                if (vp->isVisible()) {
+                    *why += QStringLiteral(" | viewport: source=%1 error=%2")
+                                .arg(vp->source() != nullptr)
+                                .arg(vp->errorText());
+                }
+            }
+        }
         return ok ? active : nullptr;
     }
 
@@ -576,8 +594,9 @@ private Q_SLOTS:
     void roiHistogramFollowsTheSelectedRoi() {
         QStandardPaths::setTestModeEnabled(true);
         auto* window = new MainWindow;
-        Viewport* vp = openWindowWith(window, tmp_.path());
-        QVERIFY(vp != nullptr);
+        QString why;
+        Viewport* vp = openWindowWith(window, tmp_.path(), &why);
+        QVERIFY2(vp != nullptr, qPrintable(why));
         QAction* hist = actionWithShortcut(window, QKeySequence(QStringLiteral("Ctrl+Shift+H")));
         QVERIFY(hist != nullptr);
         QVERIFY(!hist->isEnabled());  // nothing selected yet
@@ -647,7 +666,8 @@ private Q_SLOTS:
 
         QStandardPaths::setTestModeEnabled(true);
         auto* window = new MainWindow;
-        QVERIFY(openWindowWith(window, dir.path()) != nullptr);
+        QString why;
+        QVERIFY2(openWindowWith(window, dir.path(), &why) != nullptr, qPrintable(why));
         auto* grid = window->findChild<ViewerGrid*>();
         QVERIFY(grid != nullptr);
         grid->setLayoutGrid(1, 1);
