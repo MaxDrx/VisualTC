@@ -96,7 +96,11 @@ jobs:
         run: cmake --build --preset ${{ matrix.preset }} --parallel
 
       - name: Test
-        run: ctest --preset ${{ matrix.preset }}
+        shell: bash
+        # Failures are also published as annotations (readable without the log).
+        run: |
+          PY=python3; [ "$RUNNER_OS" = Windows ] && PY=python
+          "$PY" .github/scripts/run_tests.py --preset ${{ matrix.preset }}
 
       - name: Smoke test with synthetic exam
         shell: bash
@@ -191,6 +195,9 @@ jobs:
   macos-dmg:
     name: macOS DMG (universal - Apple Silicon + Intel)
     needs: build
+    # Needs only the two macOS builds: runs even if another system failed
+    # (and fails by itself if a macOS bundle is missing).
+    if: ${{ !cancelled() }}
     runs-on: macos-15
     env:
       HAS_SIGNING_CERT: ${{ secrets.MACOS_CERTIFICATE_P12 != '' }}
@@ -332,7 +339,7 @@ jobs:
       - name: Tests under AddressSanitizer + UndefinedBehaviorSanitizer
         env:
           ASAN_OPTIONS: detect_leaks=0
-        run: ctest --preset linux-debug-asan
+        run: python3 .github/scripts/run_tests.py --preset linux-debug-asan
       - name: clang-tidy (core library)
         run: |
           run-clang-tidy -p build/linux-debug-asan -quiet \
