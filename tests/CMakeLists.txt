@@ -49,8 +49,13 @@ if(VISUALTC_BUILD_APP)
     target_link_libraries(visualtc_ui_tests PRIVATE visualtc_ui visualtc_fixtures Qt6::Test)
     target_compile_definitions(visualtc_ui_tests PRIVATE VISUALTC_WORKER_PATH="$<TARGET_FILE:visualtc-worker>")
     add_dependencies(visualtc_ui_tests visualtc-worker)
-    add_test(NAME ui_integration COMMAND visualtc_ui_tests)
-    set_tests_properties(ui_integration PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+    # Results also go to a file (flushed line by line, survives a crash), and
+    # Qt's own messages to stderr: on Windows, without a console, Qt sends
+    # them to the debugger output, where CI cannot see them.
+    add_test(NAME ui_integration
+             COMMAND visualtc_ui_tests -o ${CMAKE_BINARY_DIR}/ui_integration.log,txt -o -,txt)
+    set_tests_properties(ui_integration PROPERTIES
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_FORCE_STDERR_LOGGING=1")
 endif()
 
 # Core performance probe (decode, window/level, MPR) on any folder.

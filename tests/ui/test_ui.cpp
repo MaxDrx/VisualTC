@@ -472,7 +472,10 @@ private Q_SLOTS:
         QCOMPARE(r.instances.size(), std::size_t(5));
         QCOMPARE(r.issues.size(), std::size_t(0));
         for (const auto& inst : r.instances) {
-            QVERIFY(QString::fromStdString(inst->filePath).startsWith(area.sessionDir()));
+            // Compared with "/" separators: on Windows the extracted paths
+            // are native ("\\") and Qt's are not.
+            const QString extracted = QDir::cleanPath(QDir::fromNativeSeparators(QString::fromStdString(inst->filePath)));
+            QVERIFY2(extracted.startsWith(QDir::cleanPath(area.sessionDir()) + QLatin1Char('/')), qPrintable(extracted));
             QVERIFY(r.displayNames.count(inst->filePath) == 1);
         }
         QVERIFY(QString::fromStdString(r.displayNames.at(r.instances.front()->filePath))

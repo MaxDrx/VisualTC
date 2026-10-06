@@ -112,7 +112,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          tail -c 60000 ctest-output.txt > ctest-tail.txt
+          {
+            if [ -f build/${{ matrix.preset }}/ui_integration.log ]; then
+              echo "===== ui_integration.log"; tail -c 25000 build/${{ matrix.preset }}/ui_integration.log; echo
+            fi
+            echo "===== ctest"; tail -c 30000 ctest-output.txt
+          } > ctest-tail.txt
           gh api -X POST "repos/$GITHUB_REPOSITORY/check-runs" \
             -f name="Saída dos testes - ${{ matrix.name }}" -f head_sha="$GITHUB_SHA" \
             -f status=completed -f conclusion=failure \

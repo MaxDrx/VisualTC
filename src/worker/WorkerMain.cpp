@@ -13,6 +13,13 @@
 #if defined(_WIN32)
 #include <fcntl.h>
 #include <io.h>
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
 #else
 #include <sys/resource.h>
 #include <unistd.h>
@@ -101,6 +108,11 @@ void applyResourceLimits() {
 
 int main() {
 #if defined(_WIN32)
+    // A decoder that crashes must just end: no "stopped working" dialog in
+    // front of the doctor and no crash report (it would carry patient
+    // images). The viewer notices the end of the pipe and starts a new one.
+    SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX | SEM_NOOPENFILEERRORBOX);
+    _set_abort_behavior(0, _WRITE_ABORT_MSG | _CALL_REPORTFAULT);
     _setmode(_fileno(stdin), _O_BINARY);
     _setmode(_fileno(stdout), _O_BINARY);
 #endif
