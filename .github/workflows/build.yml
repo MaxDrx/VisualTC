@@ -10,11 +10,21 @@ on:
   push:
     branches: [main]
     tags: ["v*"]
+  # A version can also be created on the website (Releases > "Draft a new
+  # release" with a new tag v*): the installers are then added to it.
+  release:
+    types: [published]
   pull_request:
   workflow_dispatch:
 
 permissions:
   contents: read
+
+# A tag created on the website may start both "push" and "release": the
+# later run replaces the earlier one. Also cancels outdated runs of a branch.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   QT_VERSION: "6.8.3"
@@ -287,8 +297,17 @@ jobs:
           VERSION="${GITHUB_REF_NAME#v}"
           sed -e "s/@VERSION@/$VERSION/g" -e "s|@REPO@|$GITHUB_REPOSITORY|g" \
             packaging/release-notes.md > release-notes.md
-          gh release create "$GITHUB_REF_NAME" release/* --title "VisualTC $VERSION" \
-            --notes-file release-notes.md --latest
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            # Created on the website: attach the installers and, if the
+            # description was left empty, the installation instructions.
+            gh release upload "$GITHUB_REF_NAME" release/* --clobber
+            if [ -z "$(gh release view "$GITHUB_REF_NAME" --json body --jq .body)" ]; then
+              gh release edit "$GITHUB_REF_NAME" --notes-file release-notes.md
+            fi
+          else
+            gh release create "$GITHUB_REF_NAME" release/* --title "VisualTC $VERSION" \
+              --notes-file release-notes.md --latest
+          fi
 
   sanitizers-and-analysis:
     name: ASan/UBSan + clang-tidy (Ubuntu)
