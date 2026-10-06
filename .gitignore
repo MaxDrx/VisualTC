@@ -30,3 +30,5 @@ Thumbs.db
 
 # Tools downloaded by packaging/linux/make_packages.sh
 /.packaging-tools/
+ctest-output.txt
+ctest-tail.txt

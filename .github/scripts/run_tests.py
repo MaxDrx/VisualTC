@@ -60,7 +60,12 @@ def summarize(block):
     return text[:MAX_MESSAGE] + ("\n[...]" if len(text) > MAX_MESSAGE else "")
 
 
+LOG_FILE = "ctest-output.txt"  # full output, published by the workflow when tests fail
+
+
 def main() -> int:
+    # Windows pipes default to the ANSI code page: never fail on a character.
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     cmd = ["ctest", *sys.argv[1:], "--output-on-failure"]
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                             text=True, encoding="utf-8", errors="replace")
@@ -70,6 +75,8 @@ def main() -> int:
         sys.stdout.write(line)
         lines.append(line.rstrip("\r\n"))
     rc = proc.wait()
+    with open(LOG_FILE, "w", encoding="utf-8", errors="replace") as log:
+        log.write("\n".join(lines) + "\n")
     if rc != 0:
         blocks = failure_blocks(lines)
         for name, block in blocks[:MAX_ANNOTATIONS]:

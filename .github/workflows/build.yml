@@ -35,6 +35,9 @@ jobs:
   build:
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+      checks: write   # publishes the output of failed tests
     strategy:
       fail-fast: false
       matrix:
@@ -96,11 +99,26 @@ jobs:
         run: cmake --build --preset ${{ matrix.preset }} --parallel
 
       - name: Test
+        id: test
         shell: bash
         # Failures are also published as annotations (readable without the log).
         run: |
           PY=python3; [ "$RUNNER_OS" = Windows ] && PY=python
           "$PY" .github/scripts/run_tests.py --preset ${{ matrix.preset }}
+
+      - name: Publish the test output as a check (readable through the API)
+        if: failure() && steps.test.outcome == 'failure'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tail -c 60000 ctest-output.txt > ctest-tail.txt
+          gh api -X POST "repos/$GITHUB_REPOSITORY/check-runs" \
+            -f name="Saída dos testes - ${{ matrix.name }}" -f head_sha="$GITHUB_SHA" \
+            -f status=completed -f conclusion=failure \
+            -f "output[title]=Testes que falharam" \
+            -f "output[summary]=Últimos 60 kB da saída do ctest (${{ matrix.preset }})" \
+            -F "output[text]=@ctest-tail.txt" > /dev/null
 
       - name: Smoke test with synthetic exam
         shell: bash
@@ -319,6 +337,9 @@ jobs:
   sanitizers-and-analysis:
     name: ASan/UBSan + clang-tidy (Ubuntu)
     runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      checks: write
     steps:
       - uses: actions/checkout@v5
       - name: System packages
@@ -337,9 +358,22 @@ jobs:
       - run: cmake --preset linux-debug-asan
       - run: cmake --build --preset linux-debug-asan --parallel
       - name: Tests under AddressSanitizer + UndefinedBehaviorSanitizer
+        id: test
         env:
           ASAN_OPTIONS: detect_leaks=0
         run: python3 .github/scripts/run_tests.py --preset linux-debug-asan
+      - name: Publish the test output as a check (readable through the API)
+        if: failure() && steps.test.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tail -c 60000 ctest-output.txt > ctest-tail.txt
+          gh api -X POST "repos/$GITHUB_REPOSITORY/check-runs" \
+            -f name="Saída dos testes - ASan/UBSan" -f head_sha="$GITHUB_SHA" \
+            -f status=completed -f conclusion=failure \
+            -f "output[title]=Testes que falharam" \
+            -f "output[summary]=Últimos 60 kB da saída do ctest (linux-debug-asan)" \
+            -F "output[text]=@ctest-tail.txt" > /dev/null
       - name: clang-tidy (core library)
         run: |
           run-clang-tidy -p build/linux-debug-asan -quiet \
