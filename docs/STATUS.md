@@ -1,6 +1,6 @@
-# Estado do projeto — VisualTC 0.2.0
+# Estado do projeto — VisualTC 0.3.0
 
-Atualizado em 05/10/2026 (versão 0.2.0: exames compactados, painel de séries recolhível, instaladores de um clique e Mac Intel). Convenção: um item só entra em **IMPLEMENTADO**
+Atualizado em 06/10/2026 (versão 0.3.0: correções do teste no MacBook — linhas de referência, histograma, LUT colorida, barra de ferramentas — e MPR manipulado direto nas linhas; reconstrução 3D retirada). Convenção: um item só entra em **IMPLEMENTADO**
 depois de compilado e testado (teste automatizado e/ou verificação visual
 por captura de tela). A numeração (§) segue as seções do prompt mestre.
 
@@ -35,6 +35,31 @@ por captura de tela). A numeração (§) segue as seções do prompt mestre.
 - Abertura pelo sistema: argumentos (inclusive unidade `D:\` vinda do
   Explorer) e `QFileOpenEvent` do macOS ("Abrir com", ícone no Dock).
 
+### Correções e melhorias (0.3.0, após o teste no MacBook)
+- **Linhas de referência**: aparecem também quando o topograma tem outro
+  Frame of Reference (mesmo estudo); com uma só imagem na tela, ligar **Ref.**
+  abre ao lado a série em outro plano (topograma primeiro); linha sólida e
+  mais espessa (visível em Retina); mensagem na barra de status quando não há
+  o que mostrar (ex.: duas séries paralelas).
+- **MPR direto nas linhas**: arrastar a linha move só aquele plano; a bolinha
+  na ponta gira os dois outros planos (oblíquo em qualquer ângulo, planos
+  sempre perpendiculares); a barrinha ao lado define a espessura daquele
+  plano (MIP/MinIP/média), com bordas tracejadas; o círculo central move o
+  cruzamento. Cursores e dicas na tela; escala mantida durante a rotação;
+  só o plano alterado é recalculado.
+- **Tabela de cores (LUT)**: tons de cinza, ferro quente, PET, arco-íris,
+  osso, cobre, fogo, gelo — botão LUT e menu Imagem; só exibição (HU e medidas
+  inalterados); no MPR vale para os três planos.
+- **Histograma da ROI**: habilitado assim que a ROI é desenhada ou
+  selecionada; atalho Ctrl+Shift+H (no Mac, ⌘H escondia o aplicativo);
+  também no menu do botão ROI.
+- **Barra de ferramentas**: botões com espaço adequado (Window/Level,
+  Medidas, ROI com seta de menu separada); em telas estreitas os botões menos
+  usados mostram só o ícone em vez de sumirem atrás de "»"; atalhos nas dicas
+  com a notação do sistema (⌘ no Mac).
+- **Reconstrução 3D retirada** (decisão do usuário: leveza e fluidez); o MPR
+  continua completo.
+
 ### Leitura de pixels (§ 9–11, 32–34, 74)
 - Transfer syntaxes: Implicit/Explicit LE, Explicit BE, Deflate, JPEG
   Baseline/Extended, JPEG Lossless (14 e SV1), JPEG-LS (lossless e near),
@@ -51,8 +76,9 @@ por captura de tela). A numeração (§) segue as seções do prompt mestre.
 
 ### Visualização 2D (§ 12–27, 35–37, 46–47)
 - Tema escuro de estação de trabalho (cores do § 15), imagem sobre preto, HiDPI.
-- Barra de ferramentas completa (Abrir, Pasta, Estudos, Layout, Zoom, Pan,
-  W/L, Medidas, ROI, MPR, 3D [desabilitado], Reset, Preferências etc.).
+- Barra de ferramentas completa (Abrir, Pasta, Séries, Layout, Zoom, Pan,
+  W/L, Cortes, Medidas, ROI, Valor, MPR, Cruz, Girar, Espelhar, Inverter, LUT,
+  Sincronizar, Ref., Anotações, Cine, Capturar, Exportar, Reset, Preferências).
 - Painel de séries com miniaturas assíncronas.
 - Scroll (roda, trackpad, teclado, arrasto), cine com FPS/loop/reverso.
 - W/L interativo, 8 presets de TC, presets do arquivo e personalizados.
@@ -75,12 +101,16 @@ por captura de tela). A numeração (§) segue as seções do prompt mestre.
 - Layouts 1×1, 1×2, 2×1, 2×2, 3×2, 3×3; maximizar com duplo clique.
 - Sincronização espacial por Frame of Reference (corte anatomicamente mais
   próximo), opcionalmente zoom/pan e janela; aviso quando não é possível.
-- Linhas de referência, inclusive sobre o topograma (scout lines).
+- Linhas de referência, inclusive sobre o topograma (scout lines) e entre
+  séries do mesmo estudo com Frame of Reference diferente; abertura automática
+  da série em outro plano quando só há uma imagem na tela.
 
 ### MPR (§ 48–55)
 - Axial/coronal/sagital com crosshair interativo e scroll independente.
-- Thick slab: média, MIP, MinIP (1–500 mm).
-- Planos oblíquos em passos de ±5° e restauração dos ortogonais.
+- Linhas guia manipuladas com o mouse: mover um plano, girar (oblíquo livre,
+  também em passos de ±5° pelo teclado), espessura por plano, mover o centro.
+- Thick slab: média, MIP, MinIP (1–500 mm), por plano ou nos três.
+- Restauração dos planos ortogonais.
 - Volume com origem por corte (tilt e espaçamento irregular corretos),
   lacunas vazias, int16 + rescale para economizar memória.
 
@@ -113,16 +143,15 @@ por captura de tela). A numeração (§) segue as seções do prompt mestre.
   publicada com nomes fixos por tag `v*`; página de download (`site/`).
 
 ## EM DESENVOLVIMENTO
-- **Validação nos runners do CI**: o instalador do Windows, o DMG universal
-  e a página no GitHub Pages estão configurados (com testes de instalação no
-  próprio CI), mas não foram executados neste ambiente, que é Linux sem
-  acesso ao GitHub Actions (ver "Testes realizados").
-- MPR oblíquo por arrasto livre dos eixos do crosshair (hoje: passos de 5°
-  por atalho/menu).
+- Nenhum item em andamento. Versão 0.3.0 aguardando o teste do usuário no
+  MacBook.
+
+## FORA DO ESCOPO (decisão de 06/10/2026)
+- **Reconstrução 3D** (volume rendering com VTK): retirada a pedido do
+  usuário para manter o programa leve e fluido. O MPR (inclusive oblíquo e
+  MIP/MinIP) atende ao objetivo do programa.
 
 ## A FAZER
-- **3D (v1.0)** com VTK 9.3: volume rendering, presets (osso, vasos,
-  pele), MIP 3D, clipping, cropping, rotação/zoom 3D.
 - **CPR** (reconstrução curva) e curvas de centro de vaso.
 - Visualizador completo de tags DICOM (dump de todos os elementos).
 - Pixel data em ponto flutuante (Float/Double Float Pixel Data) e
@@ -188,7 +217,7 @@ Planar Configuration` adicionado como proteção).
    no worker e em ferramentas de linha de comando.
 3. **Pipeline 2D e MPR próprio em CPU** em vez de VTK: controle exato da
    geometria (origem por corte, lacunas sem interpolação) e testes com
-   resultado exato; VTK entra apenas no 3D.
+   resultado exato; sem dependência de OpenGL (o 3D foi retirado).
 4. **Processo isolado para codecs**: a única proteção real contra falhas de
    memória em código de terceiros; o custo é a cópia dos pixels
    decodificados pelo pipe (um worker por thread, reaproveitado).
@@ -209,9 +238,9 @@ GDCM 3.0.24, libarchive 3.8.7, Catch2 3.7.1.
 
 | Conjunto | Resultado |
 |---|---|
-| `ctest` Release com `-Werror` (`linux-local`) | 94/94 aprovados (93 casos Catch2, 14 669 verificações, + suíte de interface); o teste de localidade roda com `pt_BR.UTF-8` instalada (no CI ela é gerada) |
-| `ctest` Debug + ASan + UBSan | 94/94 aprovados, sem erros do sanitizer (suíte de interface repetida 6 vezes sem falhas) |
-| Interface (QtTest offscreen) | 15 testes: janela DICOM, arrasto W/L, roda/teclado, régua 50 mm, ROI em HU, sincronização espacial, crosshair do MPR, queda do worker, falha sem laço de decodificação, multiframe maior que o cache, atalhos únicos e preset pela tecla 1, ZIP AES com senha errada e certa, limpeza da pasta temporária, painel de séries recolhível/estreito/lembrado, abertura por `QFileOpenEvent` |
+| `ctest` Release com `-Werror` (`linux-local`) | 95/95 aprovados (94 casos Catch2 + suíte de interface); o teste de localidade roda com `pt_BR.UTF-8` instalada (no CI ela é gerada) |
+| `ctest` Debug + ASan + UBSan | 95/95 aprovados, sem erros do sanitizer |
+| Interface (QtTest offscreen) | 20 testes: janela DICOM, arrasto W/L, roda/teclado, régua 50 mm, ROI em HU, sincronização espacial, crosshair do MPR, **linhas do MPR (mover plano, girar 30° com a linha seguindo o mouse, espessura de um só plano, centro)**, **planos independentes do MPR (espessura/versão por plano, 460 rotações sem perder a perpendicularidade)**, **LUT colorida**, **histograma habilitado pela ROI**, **linhas de referência com topograma de outro FoR**, queda do worker, falha sem laço de decodificação, multiframe maior que o cache, atalhos únicos e preset pela tecla 1, ZIP AES com senha errada e certa, limpeza da pasta temporária, painel de séries recolhível/estreito/lembrado, abertura por `QFileOpenEvent` |
 | Exames compactados (`[archive]`) | detecção pelo conteúdo; ZIP, ZIP sem compressão, 7z, TGZ, TBZ2, TXZ, TZST, ISO, `.dcm.gz`; nomes hostis e link simbólico; aninhados; ZipCrypto e AES-256; bombas e limites; 600 arquivos compactados danificados; protocolo do worker rejeita caminhos fora do destino. App real: ZIP de 26 MB com 425 imagens aberto em ~1,9 s, pasta temporária apagada ao sair |
 | Localidade | app sem processo isolado com `LC_ALL=pt_BR.UTF-8`: calibração, espessura, posição e MPR corretos |
 | QA numérico | 1000 × 1 − 1024 = −24 HU; 100 px × 0,5 mm = 50 mm; VOI conforme PS3.3; MPR exato em fantomas lineares (axial, tilt, espaçamento irregular, oblíquo) |
@@ -220,4 +249,5 @@ GDCM 3.0.24, libarchive 3.8.7, Catch2 3.7.1.
 | Verificação visual | capturas em `docs/screenshots/` (1×1, 2×2 com sincronização e medidas, 3×3 com todas as modalidades, MPR fino e MIP 20 mm) |
 | Desempenho (`vtc_bench`, Release, 2 núcleos) | varredura de 425 arquivos: 21 ms; decodificação por imagem: nativo 0,5 ms, JPEG-LS 1,0 ms, J2K 4,5 ms, RLE 4,7 ms, US 40 quadros RGB 17 ms; W/L 0,1–0,9 ms; volume 400×400×221 em 234 ms; MPR plano fino 2–3 ms; MIP 20 mm 44–64 ms |
 | Empacotamento | `make_packages.sh` executado aqui: `.deb` (extraído e executado fora do ambiente de compilação, abrindo um ZIP com série JPEG 2000) e AppImage (runtime estático, sem libfuse2; abriu o exame de demonstração em MPR). Fundo do DMG e página de download verificados por captura (Windows, Mac em modo escuro, Linux, celular). Instalador Windows e DMG **não executados aqui** (exigem Windows/macOS) — o CI os gera e testa |
-| Windows / macOS | **não compilados neste ambiente**; configurados no CI (GitHub Actions) |
+| Windows / macOS | compilados e testados no CI (GitHub Actions: Windows 2022, macOS 15 arm64 e Intel); versão 0.2.0 instalada e usada pelo usuário no MacBook |
+| Barra de ferramentas | capturas a 1280, 1470 e 1900 px de largura: todos os botões visíveis; rótulos de Window/Level, Medidas e ROI sempre presentes |

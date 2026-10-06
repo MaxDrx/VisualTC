@@ -75,8 +75,18 @@ void Theme::apply(QApplication& app, bool dark) {
 
     const QString css = QString(R"(
         QMainWindow, QDialog { background: %1; }
-        QToolBar { background: %3; border: none; border-bottom: 1px solid %4; spacing: 2px; padding: 3px 6px; }
-        QToolBar QToolButton { color: %5; border: 1px solid transparent; border-radius: 4px; padding: 3px 5px; }
+        QToolBar { background: %3; border: none; border-bottom: 1px solid %4; spacing: 4px; padding: 3px 6px; }
+        QToolBar QToolButton { color: %5; border: 1px solid transparent; border-radius: 4px; padding: 3px 6px; }
+        /* Buttons with a menu (Window/Level, Medidas, ROI, Layout, LUT): room for the arrow, so that it never
+           covers the label. popupMode 1 = MenuButtonPopup (separate arrow), 2 = InstantPopup. */
+        QToolBar QToolButton[popupMode="1"] { padding-right: 20px; }
+        QToolBar QToolButton::menu-button { width: 16px; border: none; border-left: 1px solid %4;
+                                            border-top-right-radius: 4px; border-bottom-right-radius: 4px; }
+        QToolBar QToolButton::menu-button:hover { background: %4; }
+        QToolBar QToolButton::menu-arrow { image: url(:/icons/menu-arrow.svg); width: 10px; height: 10px; }
+        QToolBar QToolButton[popupMode="2"] { padding-right: 16px; }
+        QToolBar QToolButton::menu-indicator { image: url(:/icons/menu-arrow.svg); width: 10px; height: 10px;
+                                               subcontrol-origin: padding; subcontrol-position: center right; right: 3px; }
         QToolBar QToolButton:hover { background: %4; }
         QToolBar QToolButton:checked { background: %8; border-color: %7; }
         QToolBar QToolButton:pressed { background: %8; }

@@ -105,6 +105,7 @@ MainWindow::MainWindow() {
             [this](const QString& id) { browser_->setThumbnail(id, thumbs_->thumbnail(id.toStdString())); });
     connect(grid_, &ViewerGrid::activeViewportChanged, this, &MainWindow::onActiveChanged);
     connect(grid_, &ViewerGrid::activeStateChanged, this, [this] { updateStatusInfo(); });
+    connect(grid_, &ViewerGrid::selectionChanged, this, &MainWindow::updateActionStates);
     connect(grid_, &ViewerGrid::cursorInfo, cursorLabel_, &QLabel::setText);
     connect(grid_, &ViewerGrid::seriesDropped, this,
             [this](Viewport* vp, const QString& id) { openSeries(id, vp); });
@@ -184,15 +185,16 @@ void MainWindow::createActions() {
         if (!key.isEmpty()) {
             a->setShortcut(key);
         }
-        a->setToolTip(tip.isEmpty() ? (key.isEmpty() ? text : text + "  (" + key.toString(QKeySequence::NativeText) + ")")
-                                    : tip);
+        // Shortcut in the platform's own notation (⌘ on the Mac).
+        const QString base = tip.isEmpty() ? text : tip;
+        a->setToolTip(key.isEmpty() ? base : base + "  (" + key.toString(QKeySequence::NativeText) + ")");
         connect(a, &QAction::triggered, this, slot);
         addAction(a);
         return a;
     };
 
     actOpenFiles_ = make(tr("Abrir arquivos…"), "open-file", QKeySequence::Open, [this] { openFiles(); },
-                         tr("Abrir arquivos DICOM ou exames compactados (ZIP, RAR, 7z, TAR, GZ, ISO)  (Ctrl+O)"));
+                         tr("Abrir arquivos DICOM ou exames compactados (ZIP, RAR, 7z, TAR, GZ, ISO)"));
     actOpenArchive_ = make(tr("Abrir exame compactado (ZIP, RAR, 7z)…"), "open-file", QKeySequence(),
                            [this] { openArchive(); });
     actOpenFolder_ = make(tr("Abrir pasta…"), "open-folder", QKeySequence(tr("Ctrl+Shift+O")), [this] { openFolder(); });
@@ -298,8 +300,12 @@ void MainWindow::createActions() {
     });
     actSync_->setCheckable(true);
     actRefLines_ = make(tr("Linhas de referência"), "reference-lines", QKeySequence(tr("Ctrl+L")), [this] {
-        grid_->setReferenceLinesEnabled(actRefLines_->isChecked());
-        AppSettings::instance().setReferenceLines(actRefLines_->isChecked());
+        const bool on = actRefLines_->isChecked();
+        grid_->setReferenceLinesEnabled(on);
+        AppSettings::instance().setReferenceLines(on);
+        if (on) {
+            showReferenceLinesContext();
+        }
     });
     actRefLines_->setCheckable(true);
     actRefLines_->setChecked(AppSettings::instance().referenceLines());
@@ -310,11 +316,8 @@ void MainWindow::createActions() {
     actOverlays_->setCheckable(true);
     actOverlays_->setChecked(AppSettings::instance().overlaysVisible());
     actMpr_ = make(tr("MPR"), "mpr", QKeySequence(tr("Ctrl+M")), [this] { toggleMpr(actMpr_->isChecked()); },
-                   tr("Reconstrução multiplanar (axial, coronal e sagital)  (Ctrl+M)"));
+                   tr("Reconstrução multiplanar (axial, coronal e sagital); a seta mostra MIP/MinIP, espessura e rotação"));
     actMpr_->setCheckable(true);
-    act3d_ = make(tr("3D"), "cube", QKeySequence(), [] {},
-                  tr("Volume rendering 3D — previsto para a versão 1.0 (módulo VTK)"));
-    act3d_->setEnabled(false);
     actCine_ = make(tr("Cine"), "cine", QKeySequence(tr("Space")), [this] {
         if (auto* vp = grid_->activeViewport()) {
             vp->setCinePlaying(!vp->cinePlaying());
@@ -336,7 +339,9 @@ void MainWindow::createActions() {
             annotations_->clearAll();
         }
     });
-    actHistogram_ = make(tr("Histograma da ROI…"), "roi-rect", QKeySequence(tr("Ctrl+H")), [this] { showRoiHistogram(); });
+    // Not Ctrl+H: on macOS that is Cmd+H, which hides the application.
+    actHistogram_ = make(tr("Histograma da ROI…"), "histogram", QKeySequence(tr("Ctrl+Shift+H")),
+                         [this] { showRoiHistogram(); });
     actInfo_ = make(tr("Informações DICOM…"), "info", QKeySequence(tr("Ctrl+I")), [this] { showDicomInfo(); });
     actVoiLut_ = make(tr("VOI LUT do arquivo"), "window-level", QKeySequence(), [this] {
         if (auto* vp = grid_->activeViewport()) {
@@ -364,23 +369,6 @@ void MainWindow::createActions() {
     fullscreen->setShortcut(QKeySequence::FullScreen);
     connect(fullscreen, &QAction::triggered, this, [this] { isFullScreen() ? showNormal() : showFullScreen(); });
     addAction(fullscreen);
-    // Oblique MPR: rotate the other two planes around the active view.
-    for (int sign : {-1, 1}) {
-        auto* a = new QAction(this);
-        a->setShortcut(sign < 0 ? QKeySequence(tr("Ctrl+[")) : QKeySequence(tr("Ctrl+]")));
-        connect(a, &QAction::triggered, this, [this, sign] {
-            auto* ms = mprOf(grid_->activeViewport());
-            if (ms == nullptr) {
-                return;
-            }
-            for (auto o : {MprOrientation::Axial, MprOrientation::Coronal, MprOrientation::Sagittal}) {
-                if (o != ms->orientation()) {
-                    ms->session()->rotate(o, ms->orientation(), 5.0 * sign);
-                }
-            }
-        });
-        addAction(a);
-    }
 }
 
 void MainWindow::createMenus() {
@@ -424,7 +412,21 @@ void MainWindow::createMenus() {
     auto* image = menuBar()->addMenu(tr("&Imagem"));
     presetMenu_ = image->addMenu(Icons::get("window-level"), tr("Presets de janela"));
     connect(presetMenu_, &QMenu::aboutToShow, this, &MainWindow::rebuildPresetMenu);
-    image->addAction(actVoiLut_);
+    // Colour tables (pseudo-colour) for greyscale images; the DICOM VOI LUT
+    // of the file, when present, stays in the same menu.
+    lutMenu_ = image->addMenu(Icons::get("lut"), tr("Tabela de cores (LUT)"));
+    lutGroup_ = new QActionGroup(this);
+    lutGroup_->setExclusive(true);
+    for (ColorMap map : kColorMaps) {
+        auto* a = lutMenu_->addAction(QIcon(colorMapSwatch(map)), QString::fromStdString(colorMapName(map)));
+        a->setCheckable(true);
+        a->setChecked(map == ColorMap::Gray);
+        a->setData(static_cast<int>(map));
+        lutGroup_->addAction(a);
+        connect(a, &QAction::triggered, this, [this, map] { applyColorMap(map); });
+    }
+    lutMenu_->addSeparator();
+    lutMenu_->addAction(actVoiLut_);
     image->addAction(actInvert_);
     image->addSeparator();
     image->addAction(actRotCw_);
@@ -487,6 +489,8 @@ void MainWindow::createMenus() {
         measure->addAction(toolActions_[t]);
         roiMenu_->addAction(toolActions_[t]);
     }
+    roiMenu_->addSeparator();
+    roiMenu_->addAction(actHistogram_);
     measure->addAction(toolActions_[Tool::Probe]);
     measure->addSeparator();
     measure->addAction(actHistogram_);
@@ -497,16 +501,35 @@ void MainWindow::createMenus() {
     measure->addAction(actDeleteAll_);
 
     auto* mpr = menuBar()->addMenu(tr("M&PR"));
+    mprMenu_ = mpr;
     mpr->addAction(actMpr_);
-    slabMenu_ = mpr->addMenu(tr("Espessura (thick slab)"));
-    auto* slabGroup = new QActionGroup(this);
+    mpr->addSeparator();
+    // Projection of the thick slab (shared by the three planes).
+    auto* modeGroup = new QActionGroup(this);
+    const std::vector<std::pair<QString, SlabMode>> modes = {{tr("MIP (intensidade máxima)"), SlabMode::MIP},
+                                                             {tr("MinIP (intensidade mínima)"), SlabMode::MinIP},
+                                                             {tr("Média"), SlabMode::Average}};
+    for (const auto& [name, mode] : modes) {
+        auto* a = mpr->addAction(name);
+        a->setCheckable(true);
+        a->setChecked(mode == SlabMode::MIP);
+        a->setData(static_cast<int>(mode));
+        modeGroup->addAction(a);
+        slabModeActions_.push_back(a);
+        connect(a, &QAction::triggered, this, [this, mode = mode] { setSlab(-1.0, static_cast<int>(mode)); });
+    }
+    slabMenu_ = mpr->addMenu(tr("Espessura dos três planos"));
+    slabGroup_ = new QActionGroup(this);
+    slabGroup_->setExclusionPolicy(QActionGroup::ExclusionPolicy::ExclusiveOptional);
     for (double t : {0.0, 1.0, 2.0, 3.0, 5.0, 10.0, 20.0, 50.0}) {
-        auto* a = slabMenu_->addAction(t == 0.0 ? tr("Desligado (plano fino)") : QStringLiteral("%1 mm").arg(t));
+        auto* a = slabMenu_->addAction(t == 0.0 ? tr("Plano fino (sem espessura)") : QStringLiteral("%1 mm").arg(t));
         a->setCheckable(true);
         a->setChecked(t == 0.0);
-        slabGroup->addAction(a);
+        a->setData(t);
+        slabGroup_->addAction(a);
         connect(a, &QAction::triggered, this, [this, t] { setSlab(t, -1); });
     }
+    slabMenu_->addSeparator();
     slabMenu_->addAction(tr("Personalizada…"), this, [this] {
         bool ok = false;
         const double t = QInputDialog::getDouble(this, tr("Espessura"), tr("Espessura do slab (mm):"), 5.0, 0.1, 500.0,
@@ -515,42 +538,26 @@ void MainWindow::createMenus() {
             setSlab(t, -1);
         }
     });
-    auto* modeGroup = new QActionGroup(this);
+    auto* slabHint = mpr->addAction(tr("Dica: arraste as barras ao lado de cada linha para mudar só aquele plano"));
+    slabHint->setEnabled(false);
     mpr->addSeparator();
-    const std::vector<std::pair<QString, int>> modes = {{tr("MIP (intensidade máxima)"), 1},
-                                                        {tr("MinIP (intensidade mínima)"), 2},
-                                                        {tr("Média"), 0}};
-    for (const auto& [name, mode] : modes) {
-        auto* a = mpr->addAction(name);
-        a->setCheckable(true);
-        a->setChecked(mode == 1);
-        modeGroup->addAction(a);
-        connect(a, &QAction::triggered, this, [this, mode = mode] { setSlab(-1.0, mode); });
-    }
-    mpr->addSeparator();
-    mpr->addAction(tr("Girar planos −5° (Ctrl+[)"), this, [this] {
+    auto rotateAll = [this](double degrees) {
         if (auto* ms = mprOf(grid_->activeViewport())) {
-            for (auto o : {MprOrientation::Axial, MprOrientation::Coronal, MprOrientation::Sagittal}) {
-                if (o != ms->orientation()) {
-                    ms->session()->rotate(o, ms->orientation(), -5.0);
-                }
-            }
+            ms->session()->rotateOthers(ms->orientation(), degrees);
         }
-    });
-    mpr->addAction(tr("Girar planos +5° (Ctrl+])"), this, [this] {
-        if (auto* ms = mprOf(grid_->activeViewport())) {
-            for (auto o : {MprOrientation::Axial, MprOrientation::Coronal, MprOrientation::Sagittal}) {
-                if (o != ms->orientation()) {
-                    ms->session()->rotate(o, ms->orientation(), 5.0);
-                }
-            }
-        }
-    });
+    };
+    // Oblique MPR without the mouse: turn the two other planes around the active view.
+    auto* turnLeft = mpr->addAction(tr("Girar planos −5°"), this, [rotateAll] { rotateAll(-5.0); });
+    turnLeft->setShortcut(QKeySequence(tr("Ctrl+[")));
+    auto* turnRight = mpr->addAction(tr("Girar planos +5°"), this, [rotateAll] { rotateAll(5.0); });
+    turnRight->setShortcut(QKeySequence(tr("Ctrl+]")));
     mpr->addAction(tr("Restaurar planos ortogonais"), this, [this] {
         if (grid_->mprSession()) {
             grid_->mprSession()->resetOrientation();
         }
     });
+    connect(mpr, &QMenu::aboutToShow, this, &MainWindow::syncMprMenu);
+    connect(slabMenu_, &QMenu::aboutToShow, this, &MainWindow::syncMprMenu);
 
     auto* help = menuBar()->addMenu(tr("A&juda"));
     help->addAction(tr("Atalhos de teclado"), this, &MainWindow::showShortcuts);
@@ -572,6 +579,8 @@ void MainWindow::createToolbar() {
     actOpenFiles_->setIconText(tr("Abrir"));
     actOpenFolder_->setIconText(tr("Pasta"));
     actStudies_->setIconText(tr("Séries"));
+    toolActions_[Tool::Scroll]->setIconText(tr("Cortes"));
+    actSync_->setIconText(tr("Sincronizar"));
     tb->addAction(actOpenFiles_);
     tb->addAction(actOpenFolder_);
     tb->addAction(actStudies_);
@@ -579,7 +588,9 @@ void MainWindow::createToolbar() {
     auto* layoutBtn = new QToolButton(tb);
     layoutBtn->setIcon(Icons::get("layout"));
     layoutBtn->setText(tr("Layout"));
-    layoutBtn->setToolTip(tr("Layout dos viewports (Ctrl+1…Ctrl+6)"));
+    layoutBtn->setToolTip(tr("Layout dos viewports (%1…%2)")
+                              .arg(QKeySequence(tr("Ctrl+1")).toString(QKeySequence::NativeText),
+                                   QKeySequence(tr("Ctrl+6")).toString(QKeySequence::NativeText)));
     layoutBtn->setMenu(layoutMenu_);
     layoutBtn->setPopupMode(QToolButton::InstantPopup);
     layoutBtn->setToolButtonStyle(Qt::ToolButtonTextUnderIcon);
@@ -603,7 +614,9 @@ void MainWindow::createToolbar() {
         b->setPopupMode(QToolButton::MenuButtonPopup);
         b->setToolButtonStyle(Qt::ToolButtonTextUnderIcon);
         QObject::connect(menu, &QMenu::triggered, b, [b, text](QAction* a) {
-            b->setDefaultAction(a);
+            if (a->isCheckable()) {  // tools become the button's action; commands (histogram) do not
+                b->setDefaultAction(a);
+            }
             Q_UNUSED(text);
         });
         tb->addWidget(b);
@@ -616,16 +629,29 @@ void MainWindow::createToolbar() {
     toolActions_[Tool::Probe]->setIconText(tr("Valor"));
     tb->addAction(toolActions_[Tool::Probe]);
     tb->addSeparator();
-    tb->addAction(actMpr_);
+    // MPR: click opens/closes it; the arrow shows MIP/MinIP, thickness, rotation.
+    auto* mprBtn = new QToolButton(tb);
+    mprBtn->setDefaultAction(actMpr_);
+    mprBtn->setMenu(mprMenu_);
+    mprBtn->setPopupMode(QToolButton::MenuButtonPopup);
+    mprBtn->setToolButtonStyle(Qt::ToolButtonTextUnderIcon);
+    tb->addWidget(mprBtn);
     toolActions_[Tool::Crosshair]->setIconText(tr("Cruz"));
     tb->addAction(toolActions_[Tool::Crosshair]);
-    tb->addAction(act3d_);
     tb->addSeparator();
     actRotCw_->setIconText(tr("Girar"));
     actFlipH_->setIconText(tr("Espelhar"));
     tb->addAction(actRotCw_);
     tb->addAction(actFlipH_);
     tb->addAction(actInvert_);
+    auto* lutBtn = new QToolButton(tb);
+    lutBtn->setIcon(Icons::get("lut"));
+    lutBtn->setText(tr("LUT"));
+    lutBtn->setToolTip(tr("Tabela de cores (LUT): tons de cinza, ferro quente, PET, arco-íris…"));
+    lutBtn->setMenu(lutMenu_);
+    lutBtn->setPopupMode(QToolButton::InstantPopup);
+    lutBtn->setToolButtonStyle(Qt::ToolButtonTextUnderIcon);
+    tb->addWidget(lutBtn);
     tb->addAction(actSync_);
     actRefLines_->setIconText(tr("Ref."));
     tb->addAction(actRefLines_);
@@ -641,6 +667,61 @@ void MainWindow::createToolbar() {
     auto* prefs = new QAction(Icons::get("settings"), tr("Preferências"), this);
     connect(prefs, &QAction::triggered, this, &MainWindow::showPreferences);
     tb->addAction(prefs);
+
+    // Narrow screens (a 13" notebook): the least used buttons lose their text
+    // first (icon and tooltip stay), so nothing has to hide behind "»".
+    toolbar_ = tb;
+    compactOrder_.clear();
+    auto add = [this, tb](QObject* o) {
+        QToolButton* b = qobject_cast<QToolButton*>(o);
+        if (b == nullptr) {
+            if (auto* a = qobject_cast<QAction*>(o)) {
+                b = qobject_cast<QToolButton*>(tb->widgetForAction(a));
+            }
+        }
+        if (b != nullptr) {
+            compactOrder_.push_back(b);
+        }
+    };
+    for (QObject* o : std::initializer_list<QObject*>{
+             prefs, actReset_, actExport_, actCapture_, actCine_, actOverlays_, actRefLines_, actSync_, lutBtn,
+             actInvert_, actFlipH_, actRotCw_, actStudies_, actOpenFolder_, actOpenFiles_, layoutBtn,
+             toolActions_[Tool::Crosshair], mprBtn, toolActions_[Tool::Probe], toolActions_[Tool::Scroll],
+             toolActions_[Tool::Pan], toolActions_[Tool::Zoom]}) {
+        add(o);
+    }
+}
+
+int MainWindow::toolbarWidthNeeded() const {
+    int total = toolbar_->contentsMargins().left() + toolbar_->contentsMargins().right() + 12;
+    const int spacing = toolbar_->layout() != nullptr ? std::max(0, toolbar_->layout()->spacing()) : 0;
+    for (QAction* a : toolbar_->actions()) {
+        if (!a->isVisible()) {
+            continue;
+        }
+        if (QWidget* w = toolbar_->widgetForAction(a)) {
+            total += w->sizeHint().width() + spacing;
+        }
+    }
+    return total;
+}
+
+void MainWindow::fitToolbar() {
+    if (toolbar_ == nullptr || fittingToolbar_) {
+        return;
+    }
+    fittingToolbar_ = true;
+    for (auto* b : compactOrder_) {
+        b->setToolButtonStyle(Qt::ToolButtonTextUnderIcon);
+    }
+    const int available = toolbar_->width();
+    for (auto* b : compactOrder_) {
+        if (toolbarWidthNeeded() <= available) {
+            break;
+        }
+        b->setToolButtonStyle(Qt::ToolButtonIconOnly);
+    }
+    fittingToolbar_ = false;
 }
 
 void MainWindow::createDock() {
@@ -923,6 +1004,86 @@ void MainWindow::openSeries(const QString& seriesId, Viewport* target) {
     updateStatusInfo();
 }
 
+void MainWindow::showReferenceLinesContext() {
+    if (grid_->referenceLineCount() > 0) {
+        statusBar()->showMessage(tr("Linhas de referência ativadas."), 4000);
+        return;
+    }
+    auto* vp = grid_->activeViewport();
+    if (mprOf(vp) != nullptr) {
+        statusBar()->showMessage(tr("No MPR, as linhas coloridas já mostram a posição de cada plano."), 6000);
+        return;
+    }
+    auto* st = stackOf(vp);
+    const auto plane = vp != nullptr ? vp->currentPlane() : std::nullopt;
+    if (st == nullptr || !plane || !plane->geometry.isSpatial()) {
+        statusBar()->showMessage(tr("Esta imagem não tem posição no espaço (DICOM): não há linhas de referência."), 6000);
+        return;
+    }
+    // Nothing comparable on screen: show, next to this image, the series of
+    // the same study in another plane that best locates it (the scout first).
+    const SeriesPtr active = st->series();
+    const std::string studyUid = active->firstInstance().studyInstanceUid;
+    const Vec3 n = plane->geometry.normal();
+    SeriesPtr best;
+    double bestScore = -1.0;
+    for (const auto& patient : db_.patients()) {
+        for (const auto& study : patient->studies) {
+            if (study->studyInstanceUid != studyUid) {
+                continue;
+            }
+            for (const auto& s : study->series) {
+                if (s == active || s->frames.empty()) {
+                    continue;
+                }
+                const FrameGeometry& g = s->frames[s->frames.size() / 2].geometry();
+                if (!g.isSpatial() || planesParallel(g.normal(), n)) {
+                    continue;
+                }
+                const bool localizer = s->firstInstance().hasLocalizerImageType || s->frameCount() <= 3;
+                const double score = (localizer ? 10.0 : 0.0) + (1.0 - std::abs(g.normal().dot(n)));
+                if (score > bestScore) {
+                    bestScore = score;
+                    best = s;
+                }
+            }
+        }
+    }
+    if (!best) {
+        statusBar()->showMessage(tr("As linhas de referência aparecem quando outra série do mesmo exame, em outro "
+                                    "plano (ex.: topograma), está aberta em outro quadro."),
+                                 8000);
+        return;
+    }
+    auto visible = grid_->visibleViewports();
+    if (visible.size() < 2) {
+        grid_->setLayoutGrid(1, 2);
+        visible = grid_->visibleViewports();
+    }
+    Viewport* target = nullptr;
+    for (auto* v : visible) {
+        if (v != vp && !v->source()) {
+            target = v;
+            break;
+        }
+    }
+    for (auto* v : visible) {
+        if (target == nullptr && v != vp) {
+            target = v;
+        }
+    }
+    if (target == nullptr) {
+        return;
+    }
+    openSeries(QString::fromStdString(best->id), target);
+    grid_->setActive(vp);  // the lines show where the image being read is
+    statusBar()->showMessage(tr("Linhas de referência: %1 aberta ao lado.")
+                                 .arg(QString::fromStdString(best->description()).isEmpty()
+                                          ? tr("série em outro plano")
+                                          : QString::fromStdString(best->description())),
+                             6000);
+}
+
 QString MainWindow::activeSeriesId() const {
     auto* vp = grid_->activeViewport();
     if (auto* st = stackOf(vp)) {
@@ -1051,17 +1212,44 @@ void MainWindow::startMpr(const QString& seriesId) {
 void MainWindow::setSlab(double thickness, int mode) {
     auto session = grid_->mprSession();
     if (!session) {
-        statusBar()->showMessage(tr("O thick slab se aplica ao MPR. Abra o MPR primeiro (Ctrl+M)."), 5000);
+        statusBar()->showMessage(tr("O thick slab se aplica ao MPR. Abra o MPR primeiro (%1).")
+                                     .arg(actMpr_->shortcut().toString(QKeySequence::NativeText)),
+                                 5000);
         return;
     }
-    SlabParams p = session->slab();
-    if (thickness >= 0.0) {
-        p.thickness = thickness;
-    }
     if (mode >= 0) {
-        p.mode = static_cast<SlabMode>(mode);
+        session->setSlabMode(static_cast<SlabMode>(mode));
+        const bool allThin = session->slab(MprOrientation::Axial).thickness <= 0.0 &&
+                             session->slab(MprOrientation::Coronal).thickness <= 0.0 &&
+                             session->slab(MprOrientation::Sagittal).thickness <= 0.0;
+        if (allThin && thickness < 0.0) {
+            // A projection of a thin plane is the plane itself: start with 10 mm.
+            thickness = 10.0;
+            statusBar()->showMessage(tr("%1 com 10 mm. Para ajustar, arraste as barras ao lado das linhas coloridas.")
+                                         .arg(MprSource::slabModeName(session->slabMode())),
+                                     8000);
+        }
     }
-    session->setSlab(p);
+    if (thickness >= 0.0) {
+        session->setSlab({thickness, session->slabMode()});
+    }
+    syncMprMenu();
+}
+
+void MainWindow::syncMprMenu() {
+    auto session = grid_->mprSession();
+    if (!session) {
+        return;
+    }
+    for (auto* a : slabModeActions_) {
+        a->setChecked(a->data().toInt() == static_cast<int>(session->slabMode()));
+    }
+    const double t = session->slab(MprOrientation::Axial).thickness;
+    const bool same = session->slab(MprOrientation::Coronal).thickness == t &&
+                      session->slab(MprOrientation::Sagittal).thickness == t;
+    for (auto* a : slabGroup_->actions()) {
+        a->setChecked(same && std::abs(a->data().toDouble() - t) < 1e-9);
+    }
 }
 
 void MainWindow::setTool(Tool tool) {
@@ -1165,6 +1353,39 @@ void MainWindow::onActiveChanged() {
     updateStatusInfo();
 }
 
+QPixmap MainWindow::colorMapSwatch(ColorMap map) {
+    const auto& table = colorMapTable(map);
+    QImage img(64, 12, QImage::Format_RGB32);
+    for (int x = 0; x < img.width(); ++x) {
+        const QRgb c = table[static_cast<std::size_t>(x * 255 / (img.width() - 1))];
+        for (int y = 0; y < img.height(); ++y) {
+            img.setPixel(x, y, c);
+        }
+    }
+    return QPixmap::fromImage(img);
+}
+
+void MainWindow::applyColorMap(ColorMap map) {
+    auto* vp = grid_->activeViewport();
+    if (vp == nullptr || !vp->source()) {
+        return;
+    }
+    if (auto* ms = mprOf(vp)) {
+        // The three MPR planes show the same volume: same colours.
+        for (auto* v : grid_->visibleViewports()) {
+            if (auto* other = mprOf(v); other != nullptr && other->session() == ms->session()) {
+                v->setColorMap(map);
+            }
+        }
+    } else {
+        vp->setColorMap(map);
+    }
+    if (vp->shownImageIsColor()) {
+        statusBar()->showMessage(tr("A tabela de cores vale para imagens em tons de cinza; esta imagem já é colorida."),
+                                 6000);
+    }
+}
+
 void MainWindow::updateActionStates() {
     auto* vp = grid_->activeViewport();
     const bool has = vp != nullptr && vp->source() != nullptr;
@@ -1173,6 +1394,14 @@ void MainWindow::updateActionStates() {
         a->setEnabled(has);
     }
     actDelete_->setEnabled(has && vp->selectedAnnotation() != nullptr);
+    lutMenu_->setEnabled(has);
+    if (has) {
+        for (auto* a : lutGroup_->actions()) {
+            if (a->data().toInt() == static_cast<int>(vp->colorMap())) {
+                a->setChecked(true);
+            }
+        }
+    }
     actDeleteAll_->setEnabled(annotations_->totalCount() > 0);
     actHistogram_->setEnabled(has && vp->selectedAnnotation() != nullptr && vp->selectedAnnotation()->isRoi());
     actMpr_->setEnabled(has || grid_->mprSession() != nullptr);
@@ -1247,7 +1476,7 @@ void MainWindow::showPreferences() {
 }
 
 void MainWindow::showShortcuts() {
-    const QString text = tr(
+    QString text = tr(
         "<table cellpadding='3'>"
         "<tr><td><b>W</b></td><td>Window/Level</td><td><b>Z</b></td><td>Zoom</td></tr>"
         "<tr><td><b>P</b></td><td>Pan</td><td><b>S</b></td><td>Navegar cortes</td></tr>"
@@ -1266,9 +1495,16 @@ void MainWindow::showShortcuts() {
         "<tr><td><b>↑ ↓ PgUp PgDn</b></td><td>Navegar cortes</td><td><b>Home/End</b></td><td>Primeiro/último</td></tr>"
         "<tr><td><b>Ctrl+Z</b></td><td>Desfazer</td><td><b>Delete</b></td><td>Excluir medida</td></tr>"
         "<tr><td><b>Ctrl+E</b></td><td>Exportar</td><td><b>Ctrl+Shift+C</b></td><td>Capturar</td></tr>"
+        "<tr><td><b>Ctrl+Shift+H</b></td><td>Histograma da ROI</td><td></td><td></td></tr>"
         "</table>"
         "<p>Mouse: roda navega · Ctrl+roda zoom · botão do meio pan · botão direito zoom · "
-        "Shift+arrastar pan · duplo clique maximiza/restaura.</p>");
+        "Shift+arrastar pan · duplo clique maximiza/restaura.</p>"
+        "<p>MPR: arraste a <b>linha colorida</b> para mover aquele plano, a <b>bolinha</b> na ponta para girar "
+        "(oblíquo), a <b>barrinha</b> ao lado para dar espessura (MIP/MinIP) e o <b>círculo central</b> para "
+        "mover o cruzamento.</p>");
+#ifdef Q_OS_MACOS
+    text.replace(QStringLiteral("Ctrl+"), QStringLiteral("⌘"));  // Qt's Ctrl is the Command key on the Mac
+#endif
     QMessageBox box(this);
     box.setWindowTitle(tr("Atalhos de teclado"));
     box.setTextFormat(Qt::RichText);
@@ -1292,6 +1528,9 @@ void MainWindow::showAbout() {
 }
 
 bool MainWindow::eventFilter(QObject* watched, QEvent* event) {
+    if (watched == toolbar_ && event->type() == QEvent::Resize) {
+        fitToolbar();
+    }
     if (watched == qApp && event->type() == QEvent::FileOpen) {
         const QString file = static_cast<QFileOpenEvent*>(event)->file();
         if (!file.isEmpty()) {

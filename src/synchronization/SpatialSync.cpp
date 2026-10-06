@@ -20,6 +20,14 @@ bool spatiallyComparable(const PlaneRect& a, const PlaneRect& b) {
            a.frameOfReferenceUid == b.frameOfReferenceUid;
 }
 
+bool referenceComparable(const PlaneRect& a, const PlaneRect& b) {
+    if (spatiallyComparable(a, b)) {
+        return true;
+    }
+    return a.geometry.isSpatial() && b.geometry.isSpatial() && !a.studyInstanceUid.empty() &&
+           a.studyInstanceUid == b.studyInstanceUid;
+}
+
 bool planesParallel(const Vec3& n1, const Vec3& n2, double maxAngleDegrees) {
     const double c = std::abs(n1.normalized().dot(n2.normalized()));
     return c >= std::cos(maxAngleDegrees * std::numbers::pi / 180.0);

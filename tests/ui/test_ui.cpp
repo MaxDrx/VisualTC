@@ -1,5 +1,7 @@
 // Integration tests of the Qt layer, run headless (QT_QPA_PLATFORM=offscreen).
 #include <QAction>
+#include <QApplication>
+#include <QDialog>
 #include <QDir>
 #include <QFileOpenEvent>
 #include <QMenu>
@@ -7,9 +9,11 @@
 #include <QStandardPaths>
 #include <QScrollBar>
 #include <QTemporaryDir>
+#include <QTimer>
 #include <QToolButton>
 #include <QtTest>
 #include <cmath>
+#include <numbers>
 
 #include "app/AppSettings.h"
 #include "core/PathUtil.h"
@@ -100,6 +104,64 @@ private:
     SeriesPtr seriesB_;
 
     void waitLoaded(Viewport& vp) { QTRY_VERIFY_WITH_TIMEOUT(vp.currentFrame() != nullptr, 20000); }
+
+    std::shared_ptr<MprSession> buildMprSession() {
+        auto fetch = [this](const FrameRef& r) { return frames_->decodeNow(r); };
+        auto built = ImageVolume::build(*seriesA_, fetch, 1ull << 30);
+        return built.volume ? std::make_shared<MprSession>(built.volume, seriesA_) : nullptr;
+    }
+
+    // Optional pictures for a visual check: VISUALTC_TEST_SCREENSHOTS=<folder>.
+    static void saveShot(QWidget* w, const QString& name) {
+        const QString dir = qEnvironmentVariable("VISUALTC_TEST_SCREENSHOTS");
+        if (!dir.isEmpty()) {
+            w->grab().save(dir + "/" + name + ".png");
+        }
+    }
+
+    static size_t guideIndex(const Viewport& vp, MprOrientation plane) {
+        for (size_t i = 0; i < vp.mprGuides().size(); ++i) {
+            if (vp.mprGuides()[i].plane == static_cast<int>(plane)) {
+                return i;
+            }
+        }
+        return vp.mprGuides().size();
+    }
+
+    static double distanceToLine(const QPointF& p, const Viewport::GuideHandles& h) {
+        const QPointF rel = p - h.center;
+        return std::abs(rel.x() * h.dir.y() - rel.y() * h.dir.x());
+    }
+
+    static QAction* actionWithShortcut(QWidget* window, const QKeySequence& ks) {
+        for (auto* a : window->findChildren<QAction*>()) {
+            if (a->shortcut() == ks) {
+                return a;
+            }
+        }
+        return nullptr;
+    }
+
+    // Main window with an exam imported; returns the viewport showing it.
+    Viewport* openWindowWith(MainWindow* window, const QString& path) {
+        window->resize(1200, 800);
+        window->show();
+        window->importPaths({path});
+        Viewport* active = nullptr;
+        const bool ok = QTest::qWaitFor(
+            [&] {
+                for (auto* vp : window->findChildren<Viewport*>()) {
+                    if (vp->isVisible() && vp->currentFrame()) {
+                        active = vp;
+                        return true;
+                    }
+                }
+                return false;
+            },
+            30000);
+        QCoreApplication::processEvents();
+        return ok ? active : nullptr;
+    }
 
 private Q_SLOTS:
     void initTestCase() {
@@ -289,6 +351,319 @@ private Q_SLOTS:
         axial->scrollBy(3);
         QVERIFY(std::abs(std::abs(session->center().z - z0) - 6.0) < 1e-6);
         grid.exitMpr();
+    }
+
+    void mprGuideLinesMoveTurnAndThicken() {
+        auto session = buildMprSession();
+        QVERIFY(session != nullptr);
+        ViewerGrid grid(store_);
+        grid.resize(1200, 400);
+        grid.show();
+        grid.enterMpr(session);
+        auto vps = grid.visibleViewports();
+        QCOMPARE(vps.size(), std::size_t(3));
+        for (auto* vp : vps) {
+            waitLoaded(*vp);
+        }
+        Viewport* axial = vps[0];
+        QCOMPARE(axial->mprGuides().size(), std::size_t(2));
+        const size_t gi = guideIndex(*axial, MprOrientation::Coronal);
+        QVERIFY(gi < 2);
+        auto h = axial->guideHandles(gi);
+        QVERIFY(h.has_value());
+        QVERIFY(h->pxPerMm > 1.0);
+
+        // 1. Drag the coronal line itself: only the coronal plane moves.
+        const Vec3 c0 = session->center();
+        const int ax0 = vps[0]->sliceIndex();
+        const int cor0 = vps[1]->sliceIndex();
+        const int sag0 = vps[2]->sliceIndex();
+        const QPoint grab = (h->center + h->dir * 50.0).toPoint();
+        const QPoint drop = (QPointF(grab) + h->normal * 40.0).toPoint();
+        QTest::mouseMove(axial, grab);
+        const Qt::CursorShape lineCursor =
+            std::abs(h->normal.y()) > std::abs(h->normal.x()) ? Qt::SplitVCursor : Qt::SplitHCursor;
+        QCOMPARE(axial->cursor().shape(), lineCursor);
+        QTest::mousePress(axial, Qt::LeftButton, Qt::NoModifier, grab);
+        QTest::mouseMove(axial, drop);
+        QTest::mouseRelease(axial, Qt::LeftButton, Qt::NoModifier, drop);
+        const Vec3 c1 = session->center();
+        const double moved = (c1 - c0).dot(session->view(MprOrientation::Coronal).n);
+        QVERIFY2(std::abs(std::abs(moved) - 40.0 / h->pxPerMm) < 0.2, qPrintable(QString::number(moved)));
+        QVERIFY(std::abs((c1 - c0).dot(session->view(MprOrientation::Sagittal).n)) < 1e-6);
+        QVERIFY(std::abs((c1 - c0).dot(session->view(MprOrientation::Axial).n)) < 1e-6);
+        QCOMPARE(vps[0]->sliceIndex(), ax0);
+        QCOMPARE(vps[2]->sliceIndex(), sag0);
+        QVERIFY(vps[1]->sliceIndex() != cor0);
+        h = axial->guideHandles(gi);
+        QVERIFY(distanceToLine(drop, *h) < 1.5);  // the line followed the mouse
+
+        // 2. Drag the round handle around the centre: the coronal and sagittal
+        // planes turn together (oblique MPR) and the line follows the mouse.
+        const Vec3 nAxial = session->view(MprOrientation::Axial).n;
+        const Vec3 nCor0 = session->view(MprOrientation::Coronal).n;
+        const double zoomCoronal = vps[1]->zoomPercent();
+        const QPointF centre = h->center;
+        const QPointF start = h->rotate[0];
+        const double radius = std::hypot(start.x() - centre.x(), start.y() - centre.y());
+        QTest::mouseMove(axial, start.toPoint());
+        QCOMPARE(axial->cursor().shape(), Qt::BitmapCursor);  // the "turn" cursor
+        saveShot(&grid, QStringLiteral("mpr-rotate-hover"));
+        QTest::mousePress(axial, Qt::LeftButton, Qt::NoModifier, start.toPoint());
+        QPointF last = start;
+        for (int k = 1; k <= 6; ++k) {
+            const double a = k * 5.0 * std::numbers::pi / 180.0;
+            const QPointF d0 = (start - centre) / radius;
+            last = centre + QPointF(d0.x() * std::cos(a) - d0.y() * std::sin(a),
+                                    d0.x() * std::sin(a) + d0.y() * std::cos(a)) * radius;
+            QTest::mouseMove(axial, last.toPoint());
+        }
+        QTest::mouseRelease(axial, Qt::LeftButton, Qt::NoModifier, last.toPoint());
+        QVERIFY(session->isOblique(MprOrientation::Coronal));
+        QVERIFY(session->isOblique(MprOrientation::Sagittal));
+        QVERIFY(!session->isOblique(MprOrientation::Axial));
+        const Vec3 nCor = session->view(MprOrientation::Coronal).n;
+        const Vec3 nSag = session->view(MprOrientation::Sagittal).n;
+        QVERIFY(std::abs(nCor.dot(nSag)) < 1e-9);
+        QVERIFY(std::abs(nCor.dot(nAxial)) < 1e-9);
+        QVERIFY(std::abs(nSag.dot(nAxial)) < 1e-9);
+        const double turned = std::acos(std::clamp(nCor.dot(nCor0), -1.0, 1.0)) * 180.0 / std::numbers::pi;
+        QVERIFY2(std::abs(turned - 30.0) < 1.0, qPrintable(QString::number(turned)));
+        h = axial->guideHandles(gi);
+        QVERIFY(distanceToLine(last, *h) < 2.0);
+        QCOMPARE(vps[1]->zoomPercent(), zoomCoronal);  // the turning plane keeps its scale
+        QVERIFY(vps[1]->source()->seriesLabel().contains(QStringLiteral("oblíquo")));
+        QVERIFY(!vps[0]->source()->seriesLabel().contains(QStringLiteral("oblíquo")));
+        saveShot(&grid, QStringLiteral("mpr-rotated"));
+
+        // 3. Pull a slab bar away from the line: MIP thickness of that plane only.
+        const int vAx = session->version(MprOrientation::Axial);
+        const int vSag = session->version(MprOrientation::Sagittal);
+        const int vCor = session->version(MprOrientation::Coronal);
+        const QPointF bar = h->slab[0];
+        QTest::mousePress(axial, Qt::LeftButton, Qt::NoModifier, bar.toPoint());
+        QTest::mouseMove(axial, (bar + h->normal * 30.0).toPoint());
+        QTest::mouseRelease(axial, Qt::LeftButton, Qt::NoModifier, (bar + h->normal * 30.0).toPoint());
+        const double t = session->slab(MprOrientation::Coronal).thickness;
+        QVERIFY2(std::abs(t - 60.0 / h->pxPerMm) <= 0.5, qPrintable(QString::number(t)));
+        QCOMPARE(session->slab(MprOrientation::Coronal).mode, SlabMode::MIP);
+        QCOMPARE(session->slab(MprOrientation::Axial).thickness, 0.0);
+        QCOMPARE(session->slab(MprOrientation::Sagittal).thickness, 0.0);
+        QCOMPARE(session->version(MprOrientation::Axial), vAx);  // not recomputed
+        QCOMPARE(session->version(MprOrientation::Sagittal), vSag);
+        QVERIFY(session->version(MprOrientation::Coronal) != vCor);
+        QVERIFY(vps[1]->source()->seriesLabel().contains(QStringLiteral("MIP")));
+        QCOMPARE(axial->mprGuides()[gi].thickness, t);
+        QTest::mouseMove(axial, axial->guideHandles(gi)->slab[0].toPoint());
+        saveShot(&grid, QStringLiteral("mpr-slab-hover"));
+        // Pushed back across the line: a thin plane again.
+        h = axial->guideHandles(gi);
+        const QPointF bar2 = h->slab[0];
+        const QPointF across = h->center + h->dir * 60.0 - h->normal * 6.0;
+        QTest::mousePress(axial, Qt::LeftButton, Qt::NoModifier, bar2.toPoint());
+        QTest::mouseMove(axial, across.toPoint());
+        QTest::mouseRelease(axial, Qt::LeftButton, Qt::NoModifier, across.toPoint());
+        QCOMPARE(session->slab(MprOrientation::Coronal).thickness, 0.0);
+
+        // 4. The centre moves both lines at once.
+        h = axial->guideHandles(gi);
+        const QPoint from = h->center.toPoint();
+        const QPoint to = from + QPoint(25, -15);
+        QTest::mouseMove(axial, from);
+        QCOMPARE(axial->cursor().shape(), Qt::SizeAllCursor);
+        QTest::mousePress(axial, Qt::LeftButton, Qt::NoModifier, from);
+        QTest::mouseMove(axial, to);
+        QTest::mouseRelease(axial, Qt::LeftButton, Qt::NoModifier, to);
+        const auto under = axial->patientPointAt(QPointF(to) - (QPointF(from) - h->center));
+        QVERIFY(under.has_value());
+        QVERIFY(distance(session->center(), *under) < 0.2);
+
+        // Handles are on screen only: exported images keep just the lines.
+        QVERIFY(!axial->renderImage(true, true).isNull());
+        grid.exitMpr();
+    }
+
+    void mprSessionKeepsPlanesIndependent() {
+        auto session = buildMprSession();
+        QVERIFY(session != nullptr);
+        const int vAx = session->version(MprOrientation::Axial);
+        const int vCor = session->version(MprOrientation::Coronal);
+        session->setSlabThickness(MprOrientation::Coronal, 8.0);
+        QCOMPARE(session->slab(MprOrientation::Coronal).thickness, 8.0);
+        QCOMPARE(session->slab(MprOrientation::Axial).thickness, 0.0);
+        QCOMPARE(session->version(MprOrientation::Axial), vAx);
+        QVERIFY(session->version(MprOrientation::Coronal) != vCor);
+        // A new projection mode recomputes only the thick planes.
+        const int vCor2 = session->version(MprOrientation::Coronal);
+        session->setSlabMode(SlabMode::MinIP);
+        QCOMPARE(session->slab(MprOrientation::Coronal).mode, SlabMode::MinIP);
+        QVERIFY(session->version(MprOrientation::Coronal) != vCor2);
+        QCOMPARE(session->version(MprOrientation::Axial), vAx);
+        // The menu sets the three planes at once; limits are respected.
+        session->setSlab({3.0, SlabMode::Average});
+        for (auto o : {MprOrientation::Axial, MprOrientation::Coronal, MprOrientation::Sagittal}) {
+            QCOMPARE(session->slab(o).thickness, 3.0);
+            QCOMPARE(session->slab(o).mode, SlabMode::Average);
+        }
+        session->setSlabThickness(MprOrientation::Axial, 9000.0);
+        QCOMPARE(session->slab(MprOrientation::Axial).thickness, 500.0);
+        session->setSlabThickness(MprOrientation::Axial, -4.0);
+        QCOMPARE(session->slab(MprOrientation::Axial).thickness, 0.0);
+
+        // Turning keeps the three planes perpendicular, even after many small
+        // steps, and the crosshair stays inside the (unrotated) volume box.
+        for (int i = 0; i < 360; ++i) {
+            session->rotateOthers(MprOrientation::Axial, 0.5);
+        }
+        for (int i = 0; i < 100; ++i) {
+            session->rotateOthers(MprOrientation::Coronal, -0.7);
+        }
+        const Vec3 a = session->view(MprOrientation::Axial).n;
+        const Vec3 c = session->view(MprOrientation::Coronal).n;
+        const Vec3 s = session->view(MprOrientation::Sagittal).n;
+        QVERIFY(std::abs(a.dot(c)) < 1e-9 && std::abs(a.dot(s)) < 1e-9 && std::abs(c.dot(s)) < 1e-9);
+        QVERIFY(std::abs(a.norm() - 1.0) < 1e-9 && std::abs(c.norm() - 1.0) < 1e-9);
+        QVERIFY(session->isOblique());
+        session->setCenter({1000.0, -1000.0, 1000.0});
+        const MprView& box = session->orthogonalView(MprOrientation::Axial);
+        const Vec3 p = session->center();
+        QVERIFY(p.dot(box.u) <= box.uMax + 1e-9 && p.dot(box.u) >= box.uMin - 1e-9);
+        QVERIFY(p.dot(box.n) <= box.nMax + 1e-9 && p.dot(box.n) >= box.nMin - 1e-9);
+        // Straight planes again.
+        session->resetOrientation();
+        QVERIFY(!session->isOblique());
+        QVERIFY(std::abs(session->view(MprOrientation::Coronal).n.dot(box.n)) < 1e-12);
+
+        // Each plane draws the two others, with its slab boundary 1 mm away
+        // per millimetre of half-thickness.
+        MprSource axial(session, MprOrientation::Axial);
+        const auto guides = axial.guides(axial.initialIndex());
+        QCOMPARE(guides.size(), std::size_t(2));
+        for (const auto& g : guides) {
+            QVERIFY(g.plane != static_cast<int>(MprOrientation::Axial));
+            const MprView& v = session->view(MprOrientation::Axial);
+            const double mm = std::hypot(g.mmOffset.x * v.spacingU, g.mmOffset.y * v.spacingV);
+            QVERIFY(std::abs(mm - 1.0) < 1e-9);  // straight planes: exactly 1 mm across
+            QCOMPARE(g.thickness, 3.0);
+        }
+    }
+
+    void colorMapsTintGreyscaleImages() {
+        Viewport vp(store_);
+        vp.resize(400, 400);
+        vp.show();
+        vp.setSource(std::make_shared<StackSource>(seriesA_, frames_, false));
+        waitLoaded(vp);
+        // Columns 0..63 hold -1000..-370 HU: a ramp across this window.
+        vp.setWindow(-685.0, 640.0);
+        const QColor grey = vp.renderImage(false, false).pixelColor(200, 200);
+        QCOMPARE(grey.red(), grey.green());
+        QCOMPARE(grey.green(), grey.blue());
+        vp.setColorMap(ColorMap::HotIron);
+        QCOMPARE(vp.colorMap(), ColorMap::HotIron);
+        const QColor hot = vp.renderImage(false, false).pixelColor(200, 200);  // middle grey -> red
+        QVERIFY2(hot.red() > 180 && hot.green() < 80 && hot.blue() < 40, qPrintable(hot.name()));
+        const QColor dark = vp.renderImage(false, false).pixelColor(30, 200);  // left: below the window
+        QVERIFY(dark.red() < 40 && dark.green() < 40 && dark.blue() < 40);
+        // Display only: the pixel values (HU) and the measurements do not change.
+        QCOMPARE(vp.currentFrame()->valueAt(10, 3), 10.0 * 10 - 1000);
+        QCOMPARE(vp.viewState().colorMap, ColorMap::HotIron);
+        vp.setColorMap(ColorMap::Gray);
+        const QColor back = vp.renderImage(false, false).pixelColor(200, 200);
+        QCOMPARE(back, grey);
+    }
+
+    void roiHistogramFollowsTheSelectedRoi() {
+        QStandardPaths::setTestModeEnabled(true);
+        auto* window = new MainWindow;
+        Viewport* vp = openWindowWith(window, tmp_.path());
+        QVERIFY(vp != nullptr);
+        QAction* hist = actionWithShortcut(window, QKeySequence(QStringLiteral("Ctrl+Shift+H")));
+        QVERIFY(hist != nullptr);
+        QVERIFY(!hist->isEnabled());  // nothing selected yet
+        vp->setTool(Tool::RectRoi);
+        QTest::mousePress(vp, Qt::LeftButton, Qt::NoModifier, QPoint(150, 150));
+        QTest::mouseMove(vp, QPoint(260, 240));
+        QTest::mouseRelease(vp, Qt::LeftButton, Qt::NoModifier, QPoint(260, 240));
+        QVERIFY(vp->selectedAnnotation() != nullptr);
+        QVERIFY(hist->isEnabled());  // the new ROI is selected
+        QTest::mouseClick(vp, Qt::LeftButton, Qt::NoModifier, QPoint(15, 15));
+        QVERIFY(vp->selectedAnnotation() == nullptr);
+        QVERIFY(!hist->isEnabled());
+        QTest::mouseClick(vp, Qt::LeftButton, Qt::NoModifier, QPoint(150, 150));  // its corner
+        QVERIFY(vp->selectedAnnotation() != nullptr);
+        QVERIFY(hist->isEnabled());
+        QString shown;
+        QTimer::singleShot(100, window, [&shown] {
+            if (auto* w = QApplication::activeModalWidget()) {
+                shown = QString::fromLatin1(w->metaObject()->className());
+                w->close();
+            }
+        });
+        hist->trigger();
+        QCOMPARE(shown, QStringLiteral("vtc::HistogramDialog"));
+        store_->clearAll();
+        delete window;
+    }
+
+    void referenceLinesOpenTheScoutBesideASingleView() {
+        // An axial series and its scout (coronal topogram) of the same exam;
+        // the scout has its own Frame of Reference, as some scanners write.
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const std::string study = makeUid("refstudy");
+        const std::string axialUid = makeUid("refaxial");
+        const std::string scoutUid = makeUid("refscout");
+        const std::string axialFor = makeUid("refforA");
+        for (int k = 0; k < 6; ++k) {
+            SyntheticImage img;
+            img.studyInstanceUid = study;
+            img.seriesInstanceUid = axialUid;
+            img.frameOfReferenceUid = axialFor;
+            img.seriesNumber = 2;
+            img.seriesDescription = "AXIAL";
+            img.rows = img.columns = 32;
+            img.spacingRow = img.spacingColumn = 1.0;
+            img.position = {-16.0, -16.0, 10.0 + 2.0 * k};
+            img.instanceNumber = k + 1;
+            img.pixels.assign(32 * 32, 1024);
+            QVERIFY(writeDicom(utf8ToPath((dir.path() + "/AX" + QString::number(k)).toStdString()), img));
+        }
+        SyntheticImage scout;
+        scout.studyInstanceUid = study;
+        scout.seriesInstanceUid = scoutUid;
+        scout.frameOfReferenceUid = makeUid("refforS");
+        scout.seriesNumber = 1;
+        scout.seriesDescription = "TOPOGRAMA";
+        scout.rows = 48;
+        scout.columns = 32;
+        scout.spacingRow = scout.spacingColumn = 1.0;
+        scout.rowDir = {1, 0, 0};
+        scout.colDir = {0, 0, -1};
+        scout.position = {-16.0, 0.0, 40.0};
+        scout.instanceNumber = 1;
+        scout.pixels.assign(48 * 32, 1024);
+        QVERIFY(writeDicom(utf8ToPath((dir.path() + "/SCOUT").toStdString()), scout));
+
+        QStandardPaths::setTestModeEnabled(true);
+        auto* window = new MainWindow;
+        QVERIFY(openWindowWith(window, dir.path()) != nullptr);
+        auto* grid = window->findChild<ViewerGrid*>();
+        QVERIFY(grid != nullptr);
+        grid->setLayoutGrid(1, 1);
+        QVERIFY(grid->activeViewport()->currentFrame() != nullptr);
+        QCOMPARE(grid->referenceLineCount(), 0);
+        QAction* ref = actionWithShortcut(window, QKeySequence(QStringLiteral("Ctrl+L")));
+        QVERIFY(ref != nullptr && ref->isCheckable());
+        if (ref->isChecked()) {
+            ref->trigger();  // off
+        }
+        ref->trigger();  // on: with one image on screen, the other plane opens beside it
+        QVERIFY(ref->isChecked());
+        QCOMPARE(grid->visibleViewports().size(), std::size_t(2));
+        QTRY_VERIFY_WITH_TIMEOUT(grid->referenceLineCount() > 0, 20000);
+        saveShot(window, QStringLiteral("reference-lines"));
+        delete window;
     }
 
     void isolatedDecoderSurvivesCrash() {

@@ -40,6 +40,8 @@ public:
     // Explains why no viewport could be synchronized (empty when OK).
     [[nodiscard]] QString syncProblem() const;
     void setReferenceLinesEnabled(bool on);
+    // Reference lines currently drawn (0: nothing comparable on screen).
+    [[nodiscard]] int referenceLineCount() const { return refLineCount_; }
     void setTool(Tool tool);
     void setOverlaysVisible(bool on);
     void setSmooth(bool on);
@@ -54,6 +56,7 @@ public:
 Q_SIGNALS:
     void activeViewportChanged(Viewport* vp);
     void activeStateChanged(Viewport* vp);  // window, slice, transform of the active viewport
+    void selectionChanged();                // selected annotation of the active viewport
     void cursorInfo(const QString& text);
     void seriesDropped(Viewport* vp, const QString& seriesId);
     void displayedSeriesChanged();
@@ -64,6 +67,9 @@ private:
     void onWindowChanged(Viewport* vp);
     void onViewChanged(Viewport* vp);
     void onCrosshairDragged(Viewport* vp, const Vec3& point);
+    void onMprLineDragged(Viewport* vp, int plane, const Vec3& point);
+    void onMprRotateDragged(Viewport* vp, const Vec3& from, const Vec3& to);
+    void onMprSlabDragged(Viewport* vp, int plane, double thicknessMm);
     void onMprCenterChanged();
     void updateReferenceLines();
     void updateCrosshairs();
@@ -78,6 +84,7 @@ private:
     Viewport* maximized_ = nullptr;
     bool sync_ = false;
     bool refLines_ = true;
+    int refLineCount_ = 0;
     bool busy_ = false;  // re-entrancy guard for synchronization
     std::map<std::string, ViewState> savedStates_;
 

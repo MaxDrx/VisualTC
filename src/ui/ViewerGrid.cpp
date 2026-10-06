@@ -1,5 +1,8 @@
 #include "ui/ViewerGrid.h"
 
+#include <cmath>
+#include <numbers>
+
 #include "app/AppSettings.h"
 #include "app/Theme.h"
 #include "mpr/MprSource.h"
@@ -33,7 +36,15 @@ ViewerGrid::ViewerGrid(AnnotationStore* store, QWidget* parent) : QWidget(parent
         connect(vp, &Viewport::maximizeRequested, this, &ViewerGrid::toggleMaximize);
         connect(vp, &Viewport::cursorInfo, this, &ViewerGrid::cursorInfo);
         connect(vp, &Viewport::crosshairDragged, this, &ViewerGrid::onCrosshairDragged);
+        connect(vp, &Viewport::mprLineDragged, this, &ViewerGrid::onMprLineDragged);
+        connect(vp, &Viewport::mprRotateDragged, this, &ViewerGrid::onMprRotateDragged);
+        connect(vp, &Viewport::mprSlabDragged, this, &ViewerGrid::onMprSlabDragged);
         connect(vp, &Viewport::seriesDropped, this, &ViewerGrid::seriesDropped);
+        connect(vp, &Viewport::annotationSelected, this, [this](Viewport* v) {
+            if (v == active_) {
+                Q_EMIT selectionChanged();
+            }
+        });
     }
     active_ = viewports_.front();
     active_->setActive(true);
@@ -125,6 +136,7 @@ void ViewerGrid::setActive(Viewport* vp) {
         active_->setActive(true);
         updateReferenceLines();
         Q_EMIT activeViewportChanged(vp);
+        Q_EMIT selectionChanged();
     }
 }
 
@@ -373,16 +385,18 @@ void ViewerGrid::updateReferenceLines() {
     if (refLines_ && active_ != nullptr) {
         activePlane = active_->currentPlane();
     }
+    refLineCount_ = 0;
     for (auto* vp : visible) {
         std::vector<GuideLine> lines;
         if (activePlane && vp != active_ && asMpr(vp) == nullptr) {
-            if (const auto target = vp->currentPlane(); target && spatiallyComparable(*activePlane, *target)) {
+            if (const auto target = vp->currentPlane(); target && referenceComparable(*activePlane, *target)) {
                 if (auto seg = referenceLine(*activePlane, *target)) {
                     QColor color = Theme::referenceLine();
                     if (auto* ms = asMpr(active_)) {
                         color = MprSource::colorFor(ms->orientation());
                     }
-                    lines.push_back({seg->first, seg->second, color, true});
+                    lines.push_back({seg->first, seg->second, color, false});
+                    ++refLineCount_;
                 }
             }
         }
@@ -458,6 +472,67 @@ void ViewerGrid::onCrosshairDragged(Viewport* vp, const Vec3& point) {
     mpr_->setCenter(onPlane);
 }
 
+void ViewerGrid::onMprLineDragged(Viewport* vp, int plane, const Vec3& point) {
+    auto* ms = asMpr(vp);
+    if (ms == nullptr || ms->session() != mpr_ || !mpr_ || plane < 0 || plane > 2) {
+        return;
+    }
+    // Move the dragged plane P through the mouse point while the third plane
+    // Q stays where it is: the centre slides along Q's line in this view.
+    const auto o = ms->orientation();
+    const auto p = static_cast<MprOrientation>(plane);
+    MprOrientation q = MprOrientation::Axial;
+    for (auto c : {MprOrientation::Axial, MprOrientation::Coronal, MprOrientation::Sagittal}) {
+        if (c != o && c != p) {
+            q = c;
+        }
+    }
+    const Vec3 nO = mpr_->view(o).n;
+    const Vec3 nP = mpr_->view(p).n;
+    const Vec3 dQ = nO.cross(mpr_->view(q).n).normalized();
+    const double along = dQ.dot(nP);
+    if (std::abs(along) < 1e-6) {
+        return;
+    }
+    const Vec3 c = mpr_->center();
+    mpr_->setCenter(c + dQ * ((point - c).dot(nP) / along));
+}
+
+void ViewerGrid::onMprRotateDragged(Viewport* vp, const Vec3& from, const Vec3& to) {
+    auto* ms = asMpr(vp);
+    if (ms == nullptr || ms->session() != mpr_ || !mpr_) {
+        return;
+    }
+    // Angle swept around the crosshair, in this view's plane.
+    const Vec3 n = mpr_->view(ms->orientation()).n;
+    const Vec3 c = mpr_->center();
+    Vec3 a = from - c;
+    Vec3 b = to - c;
+    a = a - n * a.dot(n);
+    b = b - n * b.dot(n);
+    if (a.norm() < 1e-6 || b.norm() < 1e-6) {
+        return;
+    }
+    const double angle = std::atan2(n.dot(a.cross(b)), a.dot(b)) * 180.0 / std::numbers::pi;
+    if (std::abs(angle) < 1e-4) {
+        return;
+    }
+    mpr_->rotateOthers(ms->orientation(), angle);
+}
+
+void ViewerGrid::onMprSlabDragged(Viewport* vp, int plane, double thicknessMm) {
+    auto* ms = asMpr(vp);
+    if (ms == nullptr || ms->session() != mpr_ || !mpr_ || plane < 0 || plane > 2) {
+        return;
+    }
+    // Half-millimetre steps; below 1 mm it is a thin plane again.
+    double t = std::round(thicknessMm * 2.0) / 2.0;
+    if (t < 1.0) {
+        t = 0.0;
+    }
+    mpr_->setSlabThickness(static_cast<MprOrientation>(plane), std::min(t, 500.0));
+}
+
 void ViewerGrid::onMprCenterChanged() {
     if (!mpr_) {
         return;
@@ -479,9 +554,9 @@ void ViewerGrid::onMprCenterChanged() {
 void ViewerGrid::updateCrosshairs() {
     for (auto* vp : viewports_) {
         if (auto* ms = asMpr(vp)) {
-            vp->setCrosshair(ms->crosshairLines(vp->sliceIndex()), ms->crosshairPixel(vp->sliceIndex()));
+            vp->setMprGuides(ms->guides(vp->sliceIndex()), ms->crosshairPixel(vp->sliceIndex()));
         } else {
-            vp->setCrosshair({}, std::nullopt);
+            vp->setMprGuides({}, std::nullopt);
         }
     }
 }

@@ -2,7 +2,9 @@
 
 #include <QObject>
 #include <QSize>
+#include <QSizeF>
 #include <QString>
+#include <optional>
 #include <string>
 
 #include "dicom/DicomTypes.h"
@@ -44,6 +46,9 @@ public:
     virtual void stopPrefetch() {}
     // Initial image (e.g. middle slice for MPR).
     [[nodiscard]] virtual int initialIndex() const { return 0; }
+    // Size (mm) that "fit to window" frames instead of the image's own. MPR:
+    // an oblique plane keeps the scale of the straight one while it turns.
+    [[nodiscard]] virtual std::optional<QSizeF> fitExtentMm() const { return std::nullopt; }
 
     [[nodiscard]] PlaneRect planeAt(int index) const {
         PlaneRect r;
@@ -52,6 +57,9 @@ public:
         r.width = s.width();
         r.height = s.height();
         r.frameOfReferenceUid = frameOfReference();
+        if (const InstanceInfo* inst = instanceAt(index)) {
+            r.studyInstanceUid = inst->studyInstanceUid;
+        }
         return r;
     }
     [[nodiscard]] QString valueUnit() const { return isCt() ? QStringLiteral("HU") : QString(); }

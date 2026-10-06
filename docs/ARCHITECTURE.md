@@ -125,6 +125,21 @@ interrompido) são apagadas na próxima abertura.
   pixel) e `parallelFor`; o slab amostra ao longo da normal com passo igual
   ao espaçamento do eixo alinhado (ou metade do menor espaçamento em planos
   oblíquos) — média, MIP ou MinIP.
+- MPR interativo: `MprSession` guarda, por plano, o referencial (u, v, n), a
+  espessura do slab e uma versão; o modo (MIP/MinIP/média) é comum. Cada
+  `MprSource` só recalcula a imagem quando a versão do seu plano muda (mover
+  uma linha recalcula um plano; girar, dois; a espessura, um). As linhas
+  guia (`MprGuide`) chegam ao `Viewport` em pixels da imagem: direção da
+  interseção n_O × n_P e o deslocamento da borda do slab por mm,
+  e/(e·n_P) com e = n_O × d. O viewport desenha e testa as alças em
+  coordenadas de tela; a `ViewerGrid` converte o arraste em geometria:
+  mover a linha de P desliza o centro ao longo da linha de Q
+  (t = ((m−c)·n_P)/(d_Q·n_P)); girar aplica o ângulo atan2(n·(a×b), a·b) aos
+  dois outros planos em torno de n_O (continuam perpendiculares); a
+  espessura é 2·|(m−c)·n_P|. O "ajustar à janela" de um plano oblíquo usa a
+  extensão do plano reto, para a escala não mudar enquanto ele gira.
+- Tabelas de cores (`imaging/ColorMap`): 256 entradas aplicadas depois do
+  window/level, por uma imagem indexada de 8 bits (só exibição).
 - Sincronização: só entre imagens com o mesmo Frame of Reference UID não
   vazio e planos paralelos; escolhe o corte cuja posição projetada na
   normal é a mais próxima (não o mesmo índice). Reference lines: interseção
@@ -176,11 +191,10 @@ modo binário somente leitura).
 
 | Necessidade | Escolha | Por quê | Alternativa considerada |
 |---|---|---|---|
-| Linguagem | C++20 | desempenho, acesso direto a GDCM/VTK/ITK, `std::numbers`, `std::span`-like, conceitos simples | Rust (ecossistema DICOM/GUI imaturo) |
+| Linguagem | C++20 | desempenho, acesso direto a GDCM/ITK, `std::numbers`, `std::span`-like, conceitos simples | Rust (ecossistema DICOM/GUI imaturo) |
 | Interface | Qt 6.8 LTS Widgets | nativo nos 3 SOs, HiDPI, multimonitor, maduro, LGPL | Qt Quick (menos adequado para ferramentas densas de estação de trabalho) |
 | DICOM principal | **GDCM 3.0.24** | leitura tolerante de arquivos reais, todos os codecs necessários embutidos (IJG 8/12/16, OpenJPEG, CharLS, RLE), licença BSD, build estático simples | DCMTK: excelente para rede/PACS, mas JPEG 2000 não é livre (só via módulo comercial/externo) e o build com todos os codecs é mais pesado. Fica reservado para a fase PACS (C-FIND/C-MOVE/C-STORE). |
 | 2D e MPR | pipeline próprio em CPU (double na geometria) | controle total da geometria (tilt, espaçamento irregular, lacunas) e testes exatos; leve, sem OpenGL | VTK `vtkImageReslice`: assume grade regular e exigiria reamostrar antes, escondendo lacunas |
-| 3D (v1.0) | VTK 9.3 (`vtkSmartVolumeMapper`, `QVTKOpenGLNativeWidget`) | ray casting GPU com fallback CPU, presets, clipping/cropping | implementação própria (não compensa) |
 | Processamento avançado (fase 3+) | ITK 5.4, se necessário | filtros/segmentação; não é dependência do MVP | — |
 | Build | CMake ≥ 3.21 + presets + vcpkg (baseline fixa) | reprodutível nos 3 SOs e no CI | Conan (equivalente; vcpkg tem GDCM com codecs prontos) |
 | Testes | Catch2 3.7.1 (núcleo) + QtTest (UI offscreen) | rápidos, sem dependências extras | GoogleTest |
@@ -230,7 +244,6 @@ VisualTC/
 | ↳ zstd, bzip2, liblzma, zlib | 1.5.7 / 1.0.8 / 5.x / 1.3 | BSD-3 / bzip2 / 0BSD / zlib | algoritmos de compressão |
 | ↳ OpenSSL libcrypto (Windows, Linux) | 3.x | Apache-2.0 | ZIP com senha AES (macOS: CommonCrypto) |
 | Catch2 | 3.7.1 | BSL-1.0 | somente testes |
-| VTK (planejado, fase 5) | 9.3 | BSD-3-Clause | volume rendering |
 | DCMTK (planejado, fase PACS) | 3.6.8 | BSD-3-Clause | rede DICOM |
 
 O `vcpkg.json` fixa `builtin-baseline` (vcpkg 2026.07.29) e `overrides` para
@@ -243,8 +256,8 @@ GDCM 3.0.24 e Catch2 3.7.1 (a libarchive segue a baseline: 3.8.x); o Qt é fixad
 | 1 — Fundação | CMake/presets/vcpkg, CI, scanner, parser, sorter, geometria, decoder, cache, worker isolado, testes do núcleo | **concluída** |
 | 2 — Visualizador 2D (MVP) | janela, séries, miniaturas, viewport, scroll, W/L, zoom, pan, overlays, orientação, presets, rotação/espelho/inversão, cine | **concluída** |
 | 3 — Medidas e multiview | régua, ângulo, Cobb, ROIs com HU, sonda, histograma, undo/redo, layouts, sincronização, reference lines, exportação | **concluída** |
-| 4 — MPR | axial/coronal/sagital, crosshair, oblíquo, thick slab MIP/MinIP/média | **concluída** (oblíquo por passos de 5°; rotação livre por arrasto a fazer) |
-| 5 — 3D | VTK volume rendering, presets, clipping, cropping, MIP 3D | a fazer |
+| 4 — MPR | axial/coronal/sagital, linhas guia arrastáveis (mover, girar/oblíquo livre, espessura por plano), thick slab MIP/MinIP/média | **concluída** |
+| 5 — 3D | volume rendering | **retirada** (06/10/2026, decisão do usuário: leveza e fluidez) |
 | 6 — Avançado | CPR, curvas, fusão, comparação de exames, DICOM SEG/RTSTRUCT, PACS (DCMTK) | a fazer |
 | Contínuo | empacotamento assinado (Authenticode, Developer ID + notarização), traduções, acessibilidade | parcialmente (pacotes sem assinatura no CI) |
 

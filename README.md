@@ -21,7 +21,7 @@ no GitHub Pages — veja [docs/BUILD.md](docs/BUILD.md#publicar-uma-versão)).
 
 ![VisualTC — MPR com crosshair](docs/screenshots/mpr.png)
 
-> **Aviso:** esta versão (0.2.0) não é um dispositivo médico registrado
+> **Aviso:** esta versão (0.3.0) não é um dispositivo médico registrado
 > (ANVISA/FDA/CE). Medidas e reconstruções devem ser conferidas antes de
 > qualquer uso diagnóstico.
 
@@ -34,11 +34,11 @@ no GitHub Pages — veja [docs/BUILD.md](docs/BUILD.md#publicar-uma-versão)).
 | Interface | Painel de séries **recolhível** (botão « ou F2) e redimensionável até só as miniaturas, para as imagens ocuparem quase toda a tela; estado lembrado entre sessões |
 | Organização | Paciente → Estudo → Série → Imagem; ordenação **espacial** (ImagePositionPatient × normal da orientação), nunca só por InstanceNumber; separação automática de ecos, fases, clipes de US e localizadores |
 | Formatos | Explicit/Implicit VR, Big Endian, Deflate, JPEG Baseline/Extended, JPEG Lossless, JPEG-LS, **JPEG 2000**, RLE; monocromático (MONOCHROME1/2), RGB, YBR, PALETTE COLOR; multiframe; Enhanced CT/MR (functional groups) |
-| Visualização 2D | Scroll (roda, trackpad, teclado, arrasto), Window/Level interativo, presets de TC (pulmão, mediastino, abdome, fígado, osso, cérebro, subdural, AVC), presets do arquivo, VOI LUT, presets personalizados, zoom, pan, 1:1, ajuste, rotação 90°/livre, espelhamento, inversão, interpolação linear/vizinho mais próximo, cine |
+| Visualização 2D | Scroll (roda, trackpad, teclado, arrasto), Window/Level interativo, presets de TC (pulmão, mediastino, abdome, fígado, osso, cérebro, subdural, AVC), presets do arquivo, VOI LUT, presets personalizados, **tabelas de cores** (ferro quente, PET, arco-íris, osso…), zoom, pan, 1:1, ajuste, rotação 90°/livre, espelhamento, inversão, interpolação linear/vizinho mais próximo, cine |
 | Informações | Overlay configurável (paciente, estudo, série, WW/WL, zoom, espessura, imagem X/N, posição), letras de orientação calculadas dos vetores DICOM, avisos de compressão com perdas, rotação/espelhamento e calibração ausente |
 | Medidas | Régua, ângulo, Cobb, ROI retangular/elíptica/livre (área, média, DP, mínimo, máximo em **HU**), valor do pixel, histograma da ROI, desfazer/refazer, edição de pontos e rótulos |
-| Multiview | Layouts 1×1 a 3×3, série por viewport, arrastar série para viewport, maximizar com duplo clique, **sincronização por posição anatômica** (Frame of Reference), **linhas de referência** (inclusive sobre o topograma) |
-| MPR | Axial, coronal e sagital com crosshair interativo, scroll independente, **thick slab** (média, MIP, MinIP, 1–500 mm), planos oblíquos (±5° por passo) |
+| Multiview | Layouts 1×1 a 3×3, série por viewport, arrastar série para viewport, maximizar com duplo clique, **sincronização por posição anatômica** (Frame of Reference), **linhas de referência** (inclusive sobre o topograma, que é aberto ao lado automaticamente) |
+| MPR | Axial, coronal e sagital; **linhas guia manipuladas com o mouse**: arrastar a linha move o plano, a bolinha gira (**oblíquo** em qualquer ângulo), a barrinha define a **espessura** (média, MIP, MinIP, 1–500 mm) de cada plano; scroll independente |
 | Exportação | PNG/JPEG (TIFF quando disponível), com ou sem anotações, opção de ocultar a identificação do paciente; captura do viewport para a área de transferência |
 | Segurança | Cada arquivo é lido e decodificado em um **processo isolado** (`visualtc-worker`); falhas de codecs de terceiros com arquivos maliciosos não derrubam o visualizador; validação estrutural antes da leitura; limites de memória; nenhuma telemetria; log sem dados de paciente |
 
@@ -46,16 +46,17 @@ no GitHub Pages — veja [docs/BUILD.md](docs/BUILD.md#publicar-uma-versão)).
 |---|---|
 | ![2×2 sincronizado](docs/screenshots/multiview.png) | ![3×3](docs/screenshots/modalities.png) |
 
-Recursos da versão 1.0 ainda não implementados (volume rendering 3D, clipping,
-cropping, CPR) estão em [docs/STATUS.md](docs/STATUS.md).
+A reconstrução 3D (volume rendering) foi retirada de propósito, para manter o
+programa leve e fluido; o MPR cobre o objetivo do programa. Os próximos
+recursos (CPR, fusão PET/CT, PACS…) estão em [docs/STATUS.md](docs/STATUS.md).
 
 ## Plataformas
 
 | Sistema | Pacote | Situação |
 |---|---|---|
 | Ubuntu LTS x86_64 | `visualtc_amd64.deb`, `VisualTC-x86_64.AppImage` | compilado e testado (inclusive sob ASan/UBSan); `.deb` e AppImage gerados e executados localmente |
-| Windows 10/11 x64 | `VisualTC-Setup-x64.exe` (Inno Setup, por usuário) | configurado no CI (GitHub Actions), com teste de instalação/desinstalação silenciosa; ainda não executado |
-| macOS 12+ Apple Silicon (M1–M4) e Intel | `VisualTC-macOS.dmg` (universal) | configurado no CI (`macos-15` + `macos-15-intel`, combinados com `lipo`); ainda não executado |
+| Windows 10/11 x64 | `VisualTC-Setup-x64.exe` (Inno Setup, por usuário) | compilado e testado no CI (GitHub Actions), com teste de instalação/desinstalação silenciosa |
+| macOS 12+ Apple Silicon (M1–M4) e Intel | `VisualTC-macOS.dmg` (universal) | compilado e testado no CI (`macos-15` + `macos-15-intel`, combinados com `lipo`); em uso num MacBook |
 
 ## Compilação rápida
 

@@ -2,7 +2,9 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <cstring>
+#include <set>
 
+#include "imaging/ColorMap.h"
 #include "imaging/PixelData.h"
 #include "imaging/WindowLevel.h"
 
@@ -143,4 +145,50 @@ TEST_CASE("CT presets contain clinically expected windows", "[voi]") {
         REQUIRE(p.width >= 1.0);
     }
     REQUIRE(lung);
+}
+
+TEST_CASE("Colour tables (LUT) for greyscale images", "[display]") {
+    auto rgb = [](std::uint32_t c) { return std::array<int, 3>{int((c >> 16) & 0xFF), int((c >> 8) & 0xFF), int(c & 0xFF)}; };
+    // Grey is the identity: the default display is unchanged.
+    const auto& gray = colorMapTable(ColorMap::Gray);
+    for (int i = 0; i < 256; ++i) {
+        const auto c = gray[static_cast<size_t>(i)];
+        REQUIRE((c >> 24) == 0xFFu);
+        REQUIRE(rgb(c) == std::array<int, 3>{i, i, i});
+    }
+    std::set<std::string> names;
+    for (ColorMap m : kColorMaps) {
+        const auto& t = colorMapTable(m);
+        REQUIRE(&t == &colorMapTable(m));  // built once, then cached
+        names.insert(colorMapName(m));
+        for (auto c : t) {
+            REQUIRE((c >> 24) == 0xFFu);  // opaque
+        }
+        if (m != ColorMap::Gray) {
+            bool coloured = false;
+            for (auto c : t) {
+                const auto v = rgb(c);
+                coloured = coloured || v[0] != v[1] || v[1] != v[2];
+            }
+            REQUIRE(coloured);
+        }
+    }
+    REQUIRE(names.size() == kColorMaps.size());
+    REQUIRE(names.count("") == 0);
+    // Hot iron: black -> red -> orange -> white.
+    const auto& hot = colorMapTable(ColorMap::HotIron);
+    REQUIRE(rgb(hot[0]) == std::array<int, 3>{0, 0, 0});
+    REQUIRE(rgb(hot[255]) == std::array<int, 3>{255, 255, 255});
+    const auto mid = rgb(hot[128]);
+    REQUIRE(mid[0] == 255);
+    REQUIRE(mid[1] < 10);
+    REQUIRE(mid[2] == 0);
+    // Brightness never decreases along the hot iron and grey scales.
+    int last = -1;
+    for (auto c : hot) {
+        const auto v = rgb(c);
+        const int sum = v[0] + v[1] + v[2];
+        REQUIRE(sum >= last);
+        last = sum;
+    }
 }

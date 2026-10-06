@@ -37,6 +37,27 @@ void drawOutlinedText(QPainter& p, const QPointF& pos, const QString& text, cons
     p.drawText(pos, text);
 }
 
+// Cursor shown over the round handles that turn the MPR planes.
+QCursor makeRotateCursor() {
+    QPixmap pm(24, 24);
+    pm.fill(Qt::transparent);
+    QPainter p(&pm);
+    p.setRenderHint(QPainter::Antialiasing);
+    const QRectF r(4.5, 4.5, 15, 15);
+    for (const auto& [color, width] : {std::pair{QColor(0, 0, 0), 4.0}, std::pair{QColor(255, 255, 255), 2.0}}) {
+        p.setPen(QPen(color, width, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+        p.setBrush(Qt::NoBrush);
+        p.drawArc(r, 100 * 16, 250 * 16);
+        // Arrow head at the start of the arc (top), pointing clockwise.
+        QPainterPath head;
+        head.moveTo(9.0, 1.5);
+        head.lineTo(13.5, 4.8);
+        head.lineTo(9.0, 8.0);
+        p.drawPath(head);
+    }
+    return QCursor(pm, 12, 12);
+}
+
 Qt::CursorShape cursorFor(Tool t) {
     switch (t) {
         case Tool::Pan: return Qt::OpenHandCursor;
@@ -60,6 +81,7 @@ Viewport::Viewport(AnnotationStore* store, QWidget* parent) : QWidget(parent), s
     connect(&cineTimer_, &QTimer::timeout, this, &Viewport::cineStep);
     connect(store_, &AnnotationStore::changed, this, [this] { update(); });
     setCursor(cursorFor(tool_));
+    rotateCursor_ = makeRotateCursor();
 }
 
 Viewport::~Viewport() {
@@ -82,10 +104,12 @@ void Viewport::setSource(std::shared_ptr<ImageSource> source, const ViewState* r
     error_.clear();
     pending_.reset();
     editing_.reset();
-    selected_.reset();
+    setSelected(nullptr);
     referenceLines_.clear();
-    crosshairLines_.clear();
-    crosshairCenter_.reset();
+    mprGuides_.clear();
+    mprCenter_.reset();
+    hoverGuide_ = {};
+    dragGuide_ = {};
     renderedFrame_.reset();
     if (!source_) {
         update();
@@ -123,6 +147,7 @@ ViewState Viewport::viewState() const {
     s.flipH = flipH_;
     s.flipV = flipV_;
     s.invert = invert_;
+    s.colorMap = colorMap_;
     s.fit = fit_;
     s.hasWindow = hasWindow_;
     s.center = center_;
@@ -139,6 +164,7 @@ void Viewport::applyViewState(const ViewState& s) {
     flipH_ = s.flipH;
     flipV_ = s.flipV;
     invert_ = s.invert;
+    colorMap_ = s.colorMap;
     fit_ = s.fit;
     hasWindow_ = s.hasWindow;
     center_ = s.center;
@@ -203,7 +229,7 @@ void Viewport::setSliceIndex(int index) {
     if (pending_) {
         pending_.reset();
     }
-    selected_.reset();
+    setSelected(nullptr);
     updateFrame();
     update();
     Q_EMIT sliceChanged(this);
@@ -244,6 +270,15 @@ void Viewport::setVoiLut(bool on) {
 
 void Viewport::setInvert(bool on) {
     invert_ = on;
+    update();
+    Q_EMIT windowChanged(this);
+}
+
+void Viewport::setColorMap(ColorMap map) {
+    if (colorMap_ == map) {
+        return;
+    }
+    colorMap_ = map;
     update();
     Q_EMIT windowChanged(this);
 }
@@ -365,6 +400,7 @@ void Viewport::setShowActiveFrame(bool on) {
 void Viewport::setTool(Tool tool) {
     cancelPendingAnnotation();
     tool_ = tool;
+    hoverGuide_ = {};
     setCursor(cursorFor(tool));
 }
 
@@ -373,10 +409,52 @@ void Viewport::setReferenceLines(std::vector<GuideLine> lines) {
     update();
 }
 
-void Viewport::setCrosshair(std::vector<GuideLine> lines, std::optional<Point2> center) {
-    crosshairLines_ = std::move(lines);
-    crosshairCenter_ = center;
+void Viewport::setMprGuides(std::vector<MprGuide> guides, std::optional<Point2> center) {
+    mprGuides_ = std::move(guides);
+    mprCenter_ = center;
+    if (!mprCenter_ || mprGuides_.empty()) {
+        hoverGuide_ = {};
+    }
     update();
+}
+
+std::optional<Viewport::GuideHandles> Viewport::guideHandles(size_t guide) const {
+    return guideHandlesFor(guide, transformFor(size()), size());
+}
+
+std::optional<Viewport::GuideHandles> Viewport::guideHandlesFor(size_t guide, const QTransform& t,
+                                                                const QSize& size) const {
+    if (!mprCenter_ || guide >= mprGuides_.size() || !shownFrame_) {
+        return std::nullopt;
+    }
+    const MprGuide& g = mprGuides_[guide];
+    const QPointF c0(mprCenter_->x, mprCenter_->y);
+    GuideHandles h;
+    h.center = t.map(c0);
+    QPointF d = t.map(c0 + QPointF(g.direction.x, g.direction.y)) - h.center;
+    const double dl = std::hypot(d.x(), d.y());
+    if (!(dl > 1e-9)) {
+        return std::nullopt;
+    }
+    d /= dl;
+    QPointF m = t.map(c0 + QPointF(g.mmOffset.x, g.mmOffset.y)) - h.center;
+    m -= d * QPointF::dotProduct(m, d);  // keep only the part across the line
+    const double ml = std::hypot(m.x(), m.y());
+    if (!(ml > 1e-9)) {
+        return std::nullopt;
+    }
+    h.dir = d;
+    h.normal = m / ml;
+    h.pxPerMm = ml;
+    const double side = std::min(size.width(), size.height());
+    const double rRotate = std::max(40.0, 0.38 * side);
+    const double rSlab = std::max(24.0, 0.2 * side);
+    const double off = std::max(g.thickness / 2.0 * h.pxPerMm, 9.0);
+    h.rotate[0] = h.center + d * rRotate;
+    h.rotate[1] = h.center - d * rRotate;
+    h.slab[0] = h.center + d * rSlab + h.normal * off;
+    h.slab[1] = h.center - d * rSlab - h.normal * off;
+    return h;
 }
 
 // --------------------------------------------------------------------- cine
@@ -451,14 +529,14 @@ void Viewport::cancelPendingAnnotation() {
 void Viewport::deleteSelectedAnnotation() {
     if (selected_) {
         store_->remove(annotationKey(), selected_);
-        selected_.reset();
+        setSelected(nullptr);
         update();
     }
 }
 
 void Viewport::clearAnnotationsOnImage() {
     store_->clearImage(annotationKey());
-    selected_.reset();
+    setSelected(nullptr);
     update();
 }
 
@@ -469,7 +547,7 @@ void Viewport::startAnnotation(AnnotationKind kind, const Point2& p) {
         editing_->points = {p};
     }
     editingPoint_ = 1;
-    selected_.reset();
+    setSelected(nullptr);
 }
 
 void Viewport::finishAnnotation() {
@@ -478,10 +556,17 @@ void Viewport::finishAnnotation() {
         return;
     }
     a->finished = true;
-    store_->add(annotationKey(), a);
-    selected_ = a;
     editing_.reset();
     pending_.reset();
+    setSelected(a);  // before the store notifies: the new ROI is already the selection
+    store_->add(annotationKey(), a);
+}
+
+void Viewport::setSelected(const AnnotationPtr& a) {
+    if (selected_ == a) {
+        return;
+    }
+    selected_ = a;
     Q_EMIT annotationSelected(this);
 }
 
@@ -494,8 +579,12 @@ double Viewport::fitZoom(const QSize& widgetSize) const {
     const auto g = source_->geometryAt(shownIndex_);
     const double sx = g.hasSpacing() ? g.spacingX : 1.0;
     const double sy = g.hasSpacing() ? g.spacingY : 1.0;
-    const double w = shownFrame_->width * sx;
-    const double h = shownFrame_->height * sy;
+    double w = shownFrame_->width * sx;
+    double h = shownFrame_->height * sy;
+    if (const auto e = source_->fitExtentMm(); e && e->width() > 0.0 && e->height() > 0.0) {
+        w = e->width();
+        h = e->height();
+    }
     const double a = (rotation_ * 90.0 + freeRotation_) * std::numbers::pi / 180.0;
     const double wr = std::abs(w * std::cos(a)) + std::abs(h * std::sin(a));
     const double hr = std::abs(w * std::sin(a)) + std::abs(h * std::cos(a));
@@ -568,7 +657,7 @@ void Viewport::ensureRendered() const {
     const InstanceInfo* instance = source_ ? source_->instanceAt(shownIndex_) : nullptr;
     if (renderedFrame_ == shownFrame_ && renderedInstance_ == instance && renderedIndex_ == shownIndex_ &&
         renderedCenter_ == center_ && renderedWidth_ == width_ && renderedInvert_ == invert_ &&
-        renderedVoiLut_ == useVoiLut_ && !rendered_.isNull()) {
+        renderedVoiLut_ == useVoiLut_ && renderedColorMap_ == colorMap_ && !rendered_.isNull()) {
         return;
     }
     const DecodedFrame& f = *shownFrame_;
@@ -589,9 +678,19 @@ void Viewport::ensureRendered() const {
         }
         renderer_.renderRgb32(f, params, reinterpret_cast<std::uint32_t*>(rendered_.bits()),
                               static_cast<int>(rendered_.bytesPerLine()));
-    } else {
+    } else if (colorMap_ == ColorMap::Gray) {
         if (rendered_.size() != QSize(f.width, f.height) || rendered_.format() != QImage::Format_Grayscale8) {
             rendered_ = QImage(f.width, f.height, QImage::Format_Grayscale8);
+        }
+        renderer_.renderGray(f, params, rendered_.bits(), static_cast<int>(rendered_.bytesPerLine()));
+    } else {
+        // Same grey levels, shown through the colour table (one byte per pixel).
+        if (rendered_.size() != QSize(f.width, f.height) || rendered_.format() != QImage::Format_Indexed8) {
+            rendered_ = QImage(f.width, f.height, QImage::Format_Indexed8);
+        }
+        if (renderedColorMap_ != colorMap_ || rendered_.colorCount() != 256) {
+            const auto& table = colorMapTable(colorMap_);
+            rendered_.setColorTable(QList<QRgb>(table.begin(), table.end()));
         }
         renderer_.renderGray(f, params, rendered_.bits(), static_cast<int>(rendered_.bytesPerLine()));
     }
@@ -602,6 +701,7 @@ void Viewport::ensureRendered() const {
     renderedWidth_ = width_;
     renderedInvert_ = invert_;
     renderedVoiLut_ = useVoiLut_;
+    renderedColorMap_ = colorMap_;
 }
 
 void Viewport::paintEvent(QPaintEvent* /*event*/) {
@@ -637,7 +737,7 @@ void Viewport::paintContent(QPainter& p, const QSize& size, bool overlays, bool 
         p.setTransform(t);
         p.drawImage(QRectF(-0.5, -0.5, shownFrame_->width, shownFrame_->height), rendered_);
         p.restore();
-        drawGuides(p, t);
+        drawGuides(p, t, size, interactive);
         if (annotations) {
             const MeasureContext ctx = measureContext();
             for (const auto& a : store_->list(annotationKey())) {
@@ -697,29 +797,110 @@ void Viewport::paintContent(QPainter& p, const QSize& size, bool overlays, bool 
     }
 }
 
-void Viewport::drawGuides(QPainter& p, const QTransform& t) const {
+void Viewport::drawGuides(QPainter& p, const QTransform& t, const QSize& size, bool interactive) const {
     p.save();
     p.setRenderHint(QPainter::Antialiasing);
-    auto draw = [&](const GuideLine& g, double width) {
-        QPen pen(g.color, width, g.dashed ? Qt::DashLine : Qt::SolidLine);
+    for (const auto& g : referenceLines_) {
+        QPen pen(g.color, 1.6, g.dashed ? Qt::DashLine : Qt::SolidLine);  // visible on Retina/4K screens
         pen.setCosmetic(true);
         p.setPen(pen);
         p.drawLine(t.map(QPointF(g.a.x, g.a.y)), t.map(QPointF(g.b.x, g.b.y)));
-    };
-    for (const auto& g : referenceLines_) {
-        draw(g, 1.0);
     }
-    for (const auto& g : crosshairLines_) {
-        draw(g, 1.2);
+    p.restore();
+    drawMprGuides(p, t, size, interactive);
+}
+
+void Viewport::drawMprGuides(QPainter& p, const QTransform& t, const QSize& size, bool interactive) const {
+    if (!mprCenter_) {
+        return;
     }
-    if (crosshairCenter_) {
-        const QPointF c = t.map(QPointF(crosshairCenter_->x, crosshairCenter_->y));
-        QPen pen(QColor(255, 255, 255, 200), 1.0);
+    p.save();
+    p.setRenderHint(QPainter::Antialiasing);
+    const QPointF c = t.map(QPointF(mprCenter_->x, mprCenter_->y));
+    // Long enough to cross the whole widget from wherever the centre is.
+    const double reach = std::hypot(size.width(), size.height()) + std::hypot(c.x(), c.y()) +
+                         std::hypot(size.width() - c.x(), size.height() - c.y());
+    const GuideHit& focus = drag_ != Drag::None ? dragGuide_ : hoverGuide_;
+    for (size_t i = 0; i < mprGuides_.size(); ++i) {
+        const auto h = guideHandlesFor(i, t, size);
+        if (!h) {
+            continue;
+        }
+        const MprGuide& g = mprGuides_[i];
+        const bool hot = interactive && focus.guide == static_cast<int>(i) && focus.part != GuideHit::Center;
+        // A small gap keeps the anatomy at the crosshair visible.
+        const double gap = interactive ? 12.0 : 0.0;
+        QPen pen(g.color, hot ? 2.4 : 1.3);
         pen.setCosmetic(true);
         p.setPen(pen);
-        p.setBrush(Qt::NoBrush);
-        p.drawEllipse(c, 4.5, 4.5);
+        p.drawLine(c + h->dir * gap, c + h->dir * reach);
+        p.drawLine(c - h->dir * gap, c - h->dir * reach);
+        if (g.thickness > 0.0) {  // slab boundaries
+            QColor sc = g.color;
+            sc.setAlpha(200);
+            QPen dash(sc, hot ? 1.6 : 1.0, Qt::DashLine);
+            dash.setCosmetic(true);
+            p.setPen(dash);
+            const QPointF o = h->normal * (g.thickness / 2.0 * h->pxPerMm);
+            for (const QPointF& off : {o, -o}) {
+                p.drawLine(c + off - h->dir * reach, c + off + h->dir * reach);
+            }
+        }
+        if (!interactive) {
+            continue;
+        }
+        QPen outline(QColor(0, 0, 0, 210), 1.0);
+        outline.setCosmetic(true);
+        // Round handles at both ends: turn the planes (oblique MPR).
+        for (int k = 0; k < 2; ++k) {
+            const bool on = hot && focus.part == GuideHit::Rotate && focus.side == (k == 0 ? 1 : -1);
+            p.setPen(outline);
+            p.setBrush(g.color);
+            const double r = on ? 6.5 : 5.0;
+            p.drawEllipse(h->rotate[k], r, r);
+        }
+        // Bars beside the line: slab thickness.
+        for (int k = 0; k < 2; ++k) {
+            const bool on = hot && focus.part == GuideHit::Slab && focus.side == (k == 0 ? 1 : -1);
+            const double len = on ? 9.0 : 7.0;
+            const double wid = on ? 3.2 : 2.4;
+            const QPointF a = h->slab[k];
+            const QPolygonF bar({a - h->dir * len - h->normal * wid, a + h->dir * len - h->normal * wid,
+                                 a + h->dir * len + h->normal * wid, a - h->dir * len + h->normal * wid});
+            p.setPen(outline);
+            p.setBrush(g.color);
+            p.drawPolygon(bar);
+        }
+        // Hint next to the handle under the mouse.
+        QString hint;
+        QPointF at;
+        if (hot && focus.part == GuideHit::Slab) {
+            hint = g.thickness > 0.0 ? QStringLiteral("%1 %2 mm").arg(g.slabMode, num(g.thickness, 1))
+                                     : tr("Arraste para dar espessura (MIP/MinIP)");
+            at = h->slab[focus.side > 0 ? 0 : 1];
+        } else if (hot && focus.part == GuideHit::Rotate) {
+            hint = tr("Arraste para girar (MPR oblíquo)");
+            at = h->rotate[focus.side < 0 ? 1 : 0];
+        }
+        if (!hint.isEmpty()) {
+            QFont f = p.font();
+            f.setPixelSize(12);
+            p.setFont(f);
+            const QFontMetricsF fm(f);
+            const double w = fm.horizontalAdvance(hint);
+            QPointF pos = at + QPointF(12, -10);
+            pos.setX(std::clamp(pos.x(), 4.0, std::max(4.0, size.width() - w - 4.0)));
+            pos.setY(std::clamp(pos.y(), fm.ascent() + 4.0, std::max(fm.ascent() + 4.0, size.height() - 6.0)));
+            drawOutlinedText(p, pos, hint, g.color.lighter(130));
+        }
     }
+    // Crosshair centre (drag it to move both lines).
+    const bool centerHot = interactive && focus.part == GuideHit::Center;
+    QPen pen(QColor(255, 255, 255, 220), centerHot ? 1.8 : 1.1);
+    pen.setCosmetic(true);
+    p.setPen(pen);
+    p.setBrush(centerHot ? QColor(255, 255, 255, 60) : QColor(Qt::transparent));
+    p.drawEllipse(c, centerHot ? 6.5 : 5.0, centerHot ? 6.5 : 5.0);
     p.restore();
 }
 
@@ -834,6 +1015,9 @@ void Viewport::drawOverlayText(QPainter& p, const QSize& size) const {
         bl << tr("VOI LUT (DICOM)");
     } else {
         bl << tr("WW %1  WL %2").arg(num(width_, 0), num(center_, 0));
+    }
+    if (colorMap_ != ColorMap::Gray && shownFrame_ && !shownFrame_->isColor()) {
+        bl << tr("LUT %1").arg(QString::fromStdString(colorMapName(colorMap_)));
     }
     bl << tr("Zoom %1%").arg(num(zoomPercent(), 0));
     const auto g = source_->geometryAt(slice_);
@@ -958,6 +1142,197 @@ void Viewport::resizeEvent(QResizeEvent* event) {
     update();
 }
 
+// ------------------------------------------------------- MPR guide handles
+
+bool Viewport::guidesUsable(Tool tool) const {
+    if (!mprCenter_ || mprGuides_.empty() || !shownFrame_) {
+        return false;
+    }
+    // Navigation tools and the crosshair; measurement tools keep every click.
+    switch (tool) {
+        case Tool::Crosshair:
+        case Tool::WindowLevel:
+        case Tool::Pan:
+        case Tool::Zoom:
+        case Tool::Scroll: return true;
+        default: return false;
+    }
+}
+
+Viewport::GuideHit Viewport::hitGuide(const QPointF& pos) const {
+    GuideHit hit;
+    if (!mprCenter_ || mprGuides_.empty() || !shownFrame_) {
+        return hit;
+    }
+    const QTransform t = transformFor(size());
+    std::vector<GuideHandles> hs(mprGuides_.size());
+    std::vector<bool> ok(mprGuides_.size(), false);
+    for (size_t i = 0; i < mprGuides_.size(); ++i) {
+        if (auto h = guideHandlesFor(i, t, size())) {
+            hs[i] = *h;
+            ok[i] = true;
+        }
+    }
+    auto dist = [](const QPointF& a, const QPointF& b) { return std::hypot(a.x() - b.x(), a.y() - b.y()); };
+    const QPointF c = t.map(QPointF(mprCenter_->x, mprCenter_->y));
+    if (dist(pos, c) <= 10.0) {
+        hit.part = GuideHit::Center;
+        return hit;
+    }
+    // Priority: rotation handles, slab handles, then the line itself.
+    double best = 9.0;
+    for (size_t i = 0; i < hs.size(); ++i) {
+        for (int k = 0; ok[i] && k < 2; ++k) {
+            if (const double d = dist(pos, hs[i].rotate[k]); d <= best) {
+                best = d;
+                hit = {GuideHit::Rotate, static_cast<int>(i), k == 0 ? 1 : -1};
+            }
+        }
+    }
+    if (hit.part != GuideHit::None) {
+        return hit;
+    }
+    best = 9.0;
+    for (size_t i = 0; i < hs.size(); ++i) {
+        for (int k = 0; ok[i] && k < 2; ++k) {
+            if (const double d = dist(pos, hs[i].slab[k]); d <= best) {
+                best = d;
+                hit = {GuideHit::Slab, static_cast<int>(i), k == 0 ? 1 : -1};
+            }
+        }
+    }
+    if (hit.part != GuideHit::None) {
+        return hit;
+    }
+    best = 6.0;
+    for (size_t i = 0; i < hs.size(); ++i) {
+        if (!ok[i]) {
+            continue;
+        }
+        const QPointF rel = pos - hs[i].center;
+        const double d = std::abs(rel.x() * hs[i].dir.y() - rel.y() * hs[i].dir.x());
+        if (d <= best) {
+            best = d;
+            hit = {GuideHit::Line, static_cast<int>(i), 0};
+        }
+    }
+    return hit;
+}
+
+void Viewport::updateGuideCursor(const QPointF& pos) {
+    const GuideHit h = guidesUsable(tool_) ? hitGuide(pos) : GuideHit{};
+    if (h == hoverGuide_) {
+        return;
+    }
+    hoverGuide_ = h;
+    // Size cursor matching a movement across the line.
+    auto across = [this](int guide) {
+        const auto gh = guideHandles(static_cast<size_t>(guide));
+        if (!gh) {
+            return Qt::SizeAllCursor;
+        }
+        const double a = std::atan2(gh->normal.y(), gh->normal.x()) * 180.0 / std::numbers::pi;
+        const double m = std::fmod(a + 180.0, 180.0);  // direction without sense, 0..180
+        if (m < 22.5 || m >= 157.5) {
+            return Qt::SizeHorCursor;
+        }
+        if (m < 67.5) {
+            return Qt::SizeFDiagCursor;  // down-right (screen y grows downwards)
+        }
+        if (m < 112.5) {
+            return Qt::SizeVerCursor;
+        }
+        return Qt::SizeBDiagCursor;
+    };
+    switch (h.part) {
+        case GuideHit::Center: setCursor(Qt::SizeAllCursor); break;
+        case GuideHit::Line: {
+            const Qt::CursorShape s = across(h.guide);
+            setCursor(s == Qt::SizeHorCursor ? Qt::SplitHCursor : s == Qt::SizeVerCursor ? Qt::SplitVCursor : s);
+            break;
+        }
+        case GuideHit::Rotate: setCursor(rotateCursor_); break;
+        case GuideHit::Slab: setCursor(across(h.guide)); break;
+        case GuideHit::None: setCursor(cursorFor(tool_)); break;
+    }
+    update();
+}
+
+bool Viewport::beginGuideDrag(const QPointF& pos) {
+    const GuideHit h = hitGuide(pos);
+    if (h.part == GuideHit::None) {
+        return false;
+    }
+    const QPointF c = transformFor(size()).map(QPointF(mprCenter_->x, mprCenter_->y));
+    switch (h.part) {
+        case GuideHit::Center:
+            guideGrabOffset_ = pos - c;
+            drag_ = Drag::MprCenter;
+            break;
+        case GuideHit::Line: {
+            const auto gh = guideHandles(static_cast<size_t>(h.guide));
+            if (!gh) {
+                return false;
+            }
+            const QPointF rel = pos - c;
+            guideGrabOffset_ = rel - gh->dir * QPointF::dotProduct(rel, gh->dir);  // across the line only
+            drag_ = Drag::MprLine;
+            break;
+        }
+        case GuideHit::Rotate:
+            rotateLast_ = patientPointAt(pos);
+            drag_ = Drag::MprRotate;
+            break;
+        case GuideHit::Slab: {
+            const auto gh = guideHandles(static_cast<size_t>(h.guide));
+            if (!gh) {
+                return false;
+            }
+            const double half = mprGuides_[static_cast<size_t>(h.guide)].thickness / 2.0 * gh->pxPerMm;
+            slabGrab_ = QPointF::dotProduct(pos - c, gh->normal) * h.side - half;
+            drag_ = Drag::MprSlab;
+            break;
+        }
+        case GuideHit::None: return false;
+    }
+    dragGuide_ = h;
+    hoverGuide_ = h;
+    return true;
+}
+
+void Viewport::continueGuideDrag(const QPointF& pos) {
+    const int plane = dragGuide_.guide >= 0 && dragGuide_.guide < static_cast<int>(mprGuides_.size())
+                          ? mprGuides_[static_cast<size_t>(dragGuide_.guide)].plane
+                          : -1;
+    switch (drag_) {
+        case Drag::MprCenter:
+            if (auto pp = patientPointAt(pos - guideGrabOffset_)) {
+                Q_EMIT crosshairDragged(this, *pp);
+            }
+            break;
+        case Drag::MprLine:
+            if (auto pp = patientPointAt(pos - guideGrabOffset_); pp && plane >= 0) {
+                Q_EMIT mprLineDragged(this, plane, *pp);
+            }
+            break;
+        case Drag::MprRotate:
+            if (auto pp = patientPointAt(pos)) {
+                if (rotateLast_) {
+                    Q_EMIT mprRotateDragged(this, *rotateLast_, *pp);
+                }
+                rotateLast_ = pp;
+            }
+            break;
+        case Drag::MprSlab:
+            if (const auto gh = guideHandles(static_cast<size_t>(std::max(0, dragGuide_.guide))); gh && plane >= 0) {
+                const double across = QPointF::dotProduct(pos - gh->center, gh->normal) * dragGuide_.side - slabGrab_;
+                Q_EMIT mprSlabDragged(this, plane, 2.0 * std::max(0.0, across) / gh->pxPerMm);
+            }
+            break;
+        default: break;
+    }
+}
+
 // ------------------------------------------------------------- interaction
 
 Tool Viewport::toolForButton(Qt::MouseButton b, Qt::KeyboardModifiers mods) const {
@@ -1024,6 +1399,11 @@ void Viewport::beginDrag(Tool tool, QMouseEvent* e) {
         }
     }
 
+    // MPR crosshair: lines and handles are dragged directly.
+    if (left && !pending_ && guidesUsable(tool) && beginGuideDrag(pos)) {
+        return;
+    }
+
     // Editing existing annotations (any tool, left button).
     if (left && tool != Tool::Crosshair) {
         const auto& list = store_->list(annotationKey());
@@ -1031,7 +1411,7 @@ void Viewport::beginDrag(Tool tool, QMouseEvent* e) {
             const AnnotationPtr& a = *it;
             const int h = a->hitPoint(pos, tr, 7.0);
             if (h >= 0 || a->hitLabel(pos) || a->hitBody(pos, tr, 5.0)) {
-                selected_ = a;
+                setSelected(a);
                 editing_ = a;
                 editBefore_ = a->points;
                 labelBefore_ = a->labelOffset;
@@ -1043,11 +1423,10 @@ void Viewport::beginDrag(Tool tool, QMouseEvent* e) {
                 } else {
                     drag_ = Drag::MoveAnnotation;
                 }
-                Q_EMIT annotationSelected(this);
                 return;
             }
         }
-        selected_.reset();
+        setSelected(nullptr);
     }
 
     switch (tool) {
@@ -1105,6 +1484,9 @@ void Viewport::mouseMoveEvent(QMouseEvent* e) {
     if (drag_ == Drag::None) {
         if (pending_ && !pending_->points.empty()) {
             update();  // preview of the next segment is drawn from hoverPos_
+        }
+        if (mprCenter_ && (e->buttons() & Qt::LeftButton) == 0) {
+            updateGuideCursor(pos);
         }
         return;
     }
@@ -1177,6 +1559,10 @@ void Viewport::mouseMoveEvent(QMouseEvent* e) {
                 Q_EMIT crosshairDragged(this, *pp);
             }
             break;
+        case Drag::MprCenter:
+        case Drag::MprLine:
+        case Drag::MprRotate:
+        case Drag::MprSlab: continueGuideDrag(pos); break;
         case Drag::None:
             break;
     }
@@ -1234,10 +1620,21 @@ void Viewport::mouseReleaseEvent(QMouseEvent* e) {
         case Drag::Pan:
             setCursor(cursorFor(tool_));
             break;
+        case Drag::MprCenter:
+        case Drag::MprLine:
+        case Drag::MprRotate:
+        case Drag::MprSlab:
+            dragGuide_ = {};
+            rotateLast_.reset();
+            break;
         default:
             break;
     }
     drag_ = Drag::None;
+    if (mprCenter_) {
+        hoverGuide_ = {GuideHit::None, -2, 0};  // force the cursor to be re-evaluated
+        updateGuideCursor(pos);
+    }
     update();
 }
 
@@ -1298,6 +1695,11 @@ void Viewport::keyPressEvent(QKeyEvent* e) {
 
 void Viewport::leaveEvent(QEvent* event) {
     hoverPos_.reset();
+    if (hoverGuide_.part != GuideHit::None && drag_ == Drag::None) {
+        hoverGuide_ = {};
+        setCursor(cursorFor(tool_));
+        update();
+    }
     Q_EMIT cursorInfo(QString());
     QWidget::leaveEvent(event);
 }

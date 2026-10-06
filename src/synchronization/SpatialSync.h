@@ -15,6 +15,7 @@ struct PlaneRect {
     int width = 0;
     int height = 0;
     std::string frameOfReferenceUid;
+    std::string studyInstanceUid;
 
     [[nodiscard]] Vec3 center() const {
         return geometry.pixelToPatient((width - 1) / 2.0, (height - 1) / 2.0);
@@ -26,6 +27,12 @@ struct PlaneRect {
 // Reference and complete geometry. Different FoRs are NEVER synchronized
 // (their coordinates are unrelated), even if the numbers look similar.
 bool spatiallyComparable(const PlaneRect& a, const PlaneRect& b);
+
+// Looser rule for drawing reference lines only (never for synchronization):
+// same Frame of Reference, or images of the same study. Several scanners give
+// the localizer its own Frame of Reference although patient and table did not
+// move, and a reference line on the scout is a localization aid only.
+bool referenceComparable(const PlaneRect& a, const PlaneRect& b);
 
 bool planesParallel(const Vec3& n1, const Vec3& n2, double maxAngleDegrees = 20.0);
 

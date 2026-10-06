@@ -127,10 +127,10 @@ os pacotes passam a exigir Ubuntu 24.04 / Debian 13) e oferece a imagem Intel
    e o app do macOS leem a versão daí) e `version` em `vcpkg.json`.
 2. Crie a versão de um destes jeitos (o job confere que a tag e o
    `VERSION` do CMakeLists.txt coincidem):
-   - no site do GitHub: *Releases › Draft a new release*, tag nova `v0.2.0`,
+   - no site do GitHub: *Releases › Draft a new release*, tag nova `v0.3.0`,
      *Publish release* — os instaladores são anexados quando o workflow
      termina (a primeira compilação leva cerca de uma hora);
-   - ou pelo terminal: `git tag v0.2.0 && git push origin v0.2.0`.
+   - ou pelo terminal: `git tag v0.3.0 && git push origin v0.3.0`.
 3. O job **release** publica a versão no GitHub com nomes fixos:
    `VisualTC-Setup-x64.exe`, `VisualTC-macOS.dmg`, `visualtc_amd64.deb`,
    `VisualTC-x86_64.AppImage` e `SHA256SUMS.txt`, com as instruções de

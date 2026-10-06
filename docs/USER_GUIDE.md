@@ -1,6 +1,6 @@
-# Guia do usuário — VisualTC 0.2.0
+# Guia do usuário — VisualTC 0.3.0
 
-> O VisualTC 0.2.0 não é um dispositivo médico registrado. Confira medidas e
+> O VisualTC 0.3.0 não é um dispositivo médico registrado. Confira medidas e
 > reconstruções antes de qualquer uso diagnóstico.
 
 ## 0. Instalar
@@ -23,6 +23,9 @@ Assim**. Isso só é necessário uma vez (e não aparece nas versões assinadas)
 Para desinstalar: Windows, *Configurações › Aplicativos*; Mac, arraste o
 VisualTC de Aplicativos para o Lixo; Ubuntu, Central de Programas (ou
 `sudo apt remove visualtc`); AppImage, apague o arquivo.
+
+**No Mac**, onde este guia diz **Ctrl**, use a tecla **⌘ (Command)**: Ctrl+O
+é ⌘O, Ctrl+L é ⌘L e assim por diante. Os menus já mostram os atalhos com ⌘.
 
 ## 1. Abrir um exame
 
@@ -123,6 +126,12 @@ espaço), no mesmo sentido da numeração do equipamento. A posição em mm e
   existe.
 - **Inverter** (I). Imagens MONOCHROME1 (algumas radiografias) já são
   exibidas corretamente; a inversão do usuário é aplicada por cima.
+- **Tabela de cores (LUT)** — botão **LUT** na barra ou **Imagem › Tabela de
+  cores (LUT)**: tons de cinza, ferro quente (Hot Iron), PET, arco-íris, osso,
+  cobre, fogo e gelo. A cor é aplicada depois do window/level, só na tela:
+  os valores, as medidas e o HU não mudam. Vale para imagens em tons de cinza
+  (imagens já coloridas, como Doppler, ficam como estão). No MPR, a tabela
+  escolhida vai para os três planos.
 
 Os valores WW/WL exibidos estão em HU na TC.
 
@@ -150,7 +159,9 @@ aparece no viewport e as letras de orientação acompanham a transformação.
 
 - As ROIs mostram área, média, desvio-padrão, mínimo e máximo (em **HU** na
   TC). Pixels fora da imagem são ignorados.
-- **Histograma da ROI** (Ctrl+H) para a ROI selecionada.
+- **Histograma da ROI** (Ctrl+Shift+H, ou no menu do botão **ROI** e em
+  **Medidas**): mostra a distribuição dos valores da ROI selecionada. Fica
+  disponível assim que uma ROI é desenhada ou clicada.
 - Clique numa medida para selecioná-la; arraste os pontos para editar, o
   corpo para mover e o texto para reposicioná-lo.
 - **Delete/Backspace** apaga a selecionada; Ctrl+Shift+Del apaga todas;
@@ -173,21 +184,46 @@ calibração, as medidas são mostradas em **pixels** e o aviso
   **anatomicamente** — não para o mesmo número de imagem. Séries de outro
   exame ou sem coordenadas não são sincronizadas (o viewport indica isso).
   Zoom/pan e window/level podem ser sincronizados também (Preferências).
-- **Linhas de referência** (Ctrl+L): a posição do corte ativo aparece como
-  linha nas outras séries, inclusive no topograma.
+- **Linhas de referência** (botão **Ref.** ou Ctrl+L): a posição do corte
+  ativo aparece como uma linha nas séries do mesmo exame em **outro plano**
+  (ex.: o axial sobre o topograma ou sobre o coronal). Se só houver uma
+  imagem na tela, ao ligar o botão o VisualTC abre ao lado a série em outro
+  plano mais adequada (o topograma primeiro) para mostrar a linha. Séries
+  paralelas (dois axiais) não têm linha de referência — para elas use
+  **Sincronizar**. A barra de status explica quando não há linha a mostrar.
 
 ## 8. MPR
 
 - **MPR** (Ctrl+M ou botão na barra) monta o volume da série ativa e mostra
   axial, coronal e sagital lado a lado. Disponível para séries marcadas
-  como **MPR** no painel (cortes paralelos e coerentes).
-- **Cruz** (X): clique ou arraste em um plano para posicionar os outros
-  dois. A roda do mouse percorre cada plano de forma independente.
-- **Thick slab** (menu MPR › Espessura): 1–50 mm ou valor personalizado até
-  500 mm, nos modos **MIP**, **MinIP** e **Média**.
-- **Planos oblíquos**: Ctrl+[ e Ctrl+] giram os outros dois planos em
-  passos de 5° em torno do eixo do plano ativo; "Restaurar planos
-  ortogonais" desfaz.
+  como **MPR** no painel (cortes paralelos e coerentes). A seta ao lado do
+  botão **MPR** abre as opções (MIP/MinIP, espessura, rotação).
+- Em cada plano, as **linhas coloridas** mostram onde passam os outros dois
+  (amarelo = axial, verde = coronal, azul = sagital). Tudo se faz com o mouse,
+  direto sobre as linhas:
+
+  | Arraste… | Resultado |
+  |---|---|
+  | a **linha** | move só aquele plano (o outro fica onde está) |
+  | a **bolinha** na ponta da linha | gira os dois planos em torno do cruzamento: **MPR oblíquo**, em qualquer ângulo |
+  | a **barrinha** ao lado da linha | dá **espessura** àquele plano (thick slab); as bordas aparecem tracejadas |
+  | o **círculo central** | move o cruzamento (os dois planos ao mesmo tempo) |
+
+  O cursor muda ao passar sobre cada parte, e um texto curto explica o que o
+  arraste fará. Com a ferramenta **Cruz** (X), um clique fora das linhas
+  leva o cruzamento até ali. As linhas também respondem com as ferramentas
+  Window/Level, Zoom, Pan e Navegar cortes; com as ferramentas de medida, os
+  cliques ficam para as medidas.
+- A roda do mouse percorre cada plano de forma independente.
+- **Espessura e projeção**: cada plano tem a sua espessura (pela barrinha) e
+  os três usam a mesma projeção — **MIP** (intensidade máxima), **MinIP**
+  (mínima) ou **Média**, no menu MPR. Escolher MIP ou MinIP com os planos
+  finos já aplica 10 mm. **MPR › Espessura dos três planos** aplica a mesma
+  espessura a todos (1–50 mm ou personalizada até 500 mm). O valor aparece no
+  canto de cada plano.
+- **Planos oblíquos pelo teclado**: Ctrl+[ e Ctrl+] giram os outros dois
+  planos em 5° em torno do plano ativo; **MPR › Restaurar planos ortogonais**
+  desfaz qualquer rotação. Ao girar, os planos mantêm a escala da imagem.
 - Gantry tilt e espaçamento irregular são reconstruídos nas posições reais
   dos cortes; regiões de cortes ausentes ficam pretas (nunca interpoladas).
 - Clique em **MPR** novamente para voltar à visualização 2D.
@@ -226,14 +262,16 @@ calibração, as medidas são mostradas em **pixels** e o aviso
 | ] / [ | Girar 90° | H / Shift+H | Espelhar |
 | Espaço | Cine | O | Textos sobre a imagem |
 | Y | Sincronizar | Ctrl+L | Linhas de referência |
-| Ctrl+M | MPR | Ctrl+[ / Ctrl+] | Oblíquo ±5° |
+| Ctrl+M | MPR | Ctrl+[ / Ctrl+] | MPR oblíquo ±5° |
 | 1–8 | Presets de TC | Ctrl+0 | Reset |
 | Ctrl+E | Exportar | Ctrl+Shift+C | Capturar |
-| Ctrl+H | Histograma | Ctrl+I | Informações DICOM |
+| Ctrl+Shift+H | Histograma da ROI | Ctrl+I | Informações DICOM |
 | Ctrl+Z | Desfazer | Delete | Apagar medida |
 | Esc | Cancelar / ferramenta padrão | Tab | Próximo viewport |
 
-A lista também está em **Ajuda › Atalhos de teclado**.
+A lista também está em **Ajuda › Atalhos de teclado**. Em telas estreitas
+(notebook de 13"), os botões menos usados da barra mostram só o ícone; o
+nome aparece ao parar o mouse sobre eles.
 
 ## 12. Privacidade e log
 

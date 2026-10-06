@@ -15,6 +15,7 @@ add_library(visualtc_core STATIC
     dicom/DicomDecoder.cpp
     dicom/WorkerProtocol.cpp
     imaging/PixelData.cpp
+    imaging/ColorMap.cpp
     imaging/WindowLevel.cpp
     imaging/Orientation.cpp
     imaging/FrameCache.cpp

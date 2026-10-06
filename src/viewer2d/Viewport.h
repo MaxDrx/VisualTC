@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QColor>
+#include <QCursor>
 #include <QImage>
 #include <QPointer>
 #include <QTimer>
@@ -9,6 +10,7 @@
 #include <optional>
 #include <vector>
 
+#include "imaging/ColorMap.h"
 #include "imaging/WindowLevel.h"
 #include "measurements/MeasurementMath.h"
 #include "synchronization/SpatialSync.h"
@@ -43,6 +45,19 @@ struct GuideLine {
     bool dashed = false;
 };
 
+// Intersection of another MPR plane with the displayed one, through the
+// crosshair, in image pixel coordinates of the displayed slice. The user drags
+// the line (moves that plane), its round end handles (turns the planes:
+// oblique MPR) and its slab handles (thickness for MIP/MinIP/average).
+struct MprGuide {
+    int plane = 0;        // which plane the line represents (MprOrientation)
+    Point2 direction;     // along the line (any length)
+    Point2 mmOffset;      // from the line to the slab boundary for 1 mm of half-thickness
+    double thickness = 0; // slab thickness of that plane (mm), 0 = thin plane
+    QString slabMode;     // "MIP", "MinIP", "Média" (shown while dragging)
+    QColor color;
+};
+
 // Per-series display state, restored when the series is shown again in the
 // same session (section 53).
 struct ViewState {
@@ -54,6 +69,7 @@ struct ViewState {
     bool flipH = false;
     bool flipV = false;
     bool invert = false;
+    ColorMap colorMap = ColorMap::Gray;
     bool fit = true;
     bool hasWindow = false;
     double center = 0.0;
@@ -85,6 +101,10 @@ public:
 
     void setInvert(bool on);
     [[nodiscard]] bool inverted() const { return invert_; }
+    // Pseudo-colour table for greyscale images (display only).
+    void setColorMap(ColorMap map);
+    [[nodiscard]] ColorMap colorMap() const { return colorMap_; }
+    [[nodiscard]] bool shownImageIsColor() const { return shownFrame_ && shownFrame_->isColor(); }
     void rotate90(int quarterTurns);
     void setFreeRotation(double degrees);
     void flipHorizontal();
@@ -110,7 +130,22 @@ public:
     [[nodiscard]] Tool tool() const { return tool_; }
 
     void setReferenceLines(std::vector<GuideLine> lines);
-    void setCrosshair(std::vector<GuideLine> lines, std::optional<Point2> center);
+    // MPR crosshair: the lines of the two other planes and their intersection.
+    void setMprGuides(std::vector<MprGuide> guides, std::optional<Point2> center);
+    [[nodiscard]] const std::vector<MprGuide>& mprGuides() const { return mprGuides_; }
+    [[nodiscard]] std::optional<Point2> mprCenter() const { return mprCenter_; }
+
+    // Screen geometry of the MPR handles (widget coordinates), for tests and
+    // hit testing. Empty when there is no MPR crosshair.
+    struct GuideHandles {
+        QPointF center;
+        QPointF dir;         // unit, along the line
+        QPointF normal;      // unit, towards the + slab side
+        double pxPerMm = 0;  // screen pixels per mm across the line
+        QPointF rotate[2];
+        QPointF slab[2];     // slab[0] on the + side, slab[1] on the - side
+    };
+    [[nodiscard]] std::optional<GuideHandles> guideHandles(size_t guide) const;
 
     // Cine
     void setCinePlaying(bool on);
@@ -146,8 +181,12 @@ Q_SIGNALS:
     void maximizeRequested(Viewport* vp);
     void cursorInfo(const QString& text);
     void crosshairDragged(Viewport* vp, const vtc::Vec3& point);
+    // MPR guide lines, see MprGuide. Points are in patient coordinates.
+    void mprLineDragged(Viewport* vp, int plane, const vtc::Vec3& point);
+    void mprRotateDragged(Viewport* vp, const vtc::Vec3& from, const vtc::Vec3& to);
+    void mprSlabDragged(Viewport* vp, int plane, double thicknessMm);
     void seriesDropped(Viewport* vp, const QString& seriesId);
-    void annotationSelected(Viewport* vp);
+    void annotationSelected(Viewport* vp);  // the selected annotation changed (also to none)
 
 protected:
     void paintEvent(QPaintEvent* event) override;
@@ -175,7 +214,18 @@ private:
         MoveAnnotation,
         MoveLabel,
         Probe,
-        Crosshair
+        Crosshair,
+        MprCenter,
+        MprLine,
+        MprRotate,
+        MprSlab
+    };
+    // Part of the MPR crosshair under the mouse.
+    struct GuideHit {
+        enum Part { None, Center, Line, Rotate, Slab } part = None;
+        int guide = -1;
+        int side = 0;  // slab handle: +1 or -1
+        bool operator==(const GuideHit& o) const { return part == o.part && guide == o.guide && side == o.side; }
     };
 
     void onImageReady(int index);
@@ -185,7 +235,14 @@ private:
     void paintContent(QPainter& p, const QSize& size, bool overlays, bool annotations, bool interactive) const;
     void drawOverlayText(QPainter& p, const QSize& size) const;
     void drawOrientationMarkers(QPainter& p, const QSize& size, const QTransform& t) const;
-    void drawGuides(QPainter& p, const QTransform& t) const;
+    void drawGuides(QPainter& p, const QTransform& t, const QSize& size, bool interactive) const;
+    void drawMprGuides(QPainter& p, const QTransform& t, const QSize& size, bool interactive) const;
+    [[nodiscard]] std::optional<GuideHandles> guideHandlesFor(size_t guide, const QTransform& t, const QSize& size) const;
+    [[nodiscard]] GuideHit hitGuide(const QPointF& pos) const;
+    [[nodiscard]] bool guidesUsable(Tool tool) const;
+    void updateGuideCursor(const QPointF& pos);
+    bool beginGuideDrag(const QPointF& pos);
+    void continueGuideDrag(const QPointF& pos);
     void drawProbe(QPainter& p, const QTransform& t) const;
     [[nodiscard]] QTransform transformFor(const QSize& widgetSize) const;
     [[nodiscard]] double fitZoom(const QSize& widgetSize) const;
@@ -212,6 +269,7 @@ private:
     bool hasWindow_ = false;
     bool useVoiLut_ = false;
     bool invert_ = false;
+    ColorMap colorMap_ = ColorMap::Gray;
     double zoom_ = 1.0;
     QPointF pan_;
     int rotation_ = 0;
@@ -237,13 +295,20 @@ private:
     mutable double renderedCenter_ = 0.0;
     mutable double renderedWidth_ = 0.0;
     mutable bool renderedInvert_ = false;
+    mutable ColorMap renderedColorMap_ = ColorMap::Gray;
     mutable bool renderedVoiLut_ = false;
     mutable bool hidePatient_ = false;
     QString emptyHint_;
 
     std::vector<GuideLine> referenceLines_;
-    std::vector<GuideLine> crosshairLines_;
-    std::optional<Point2> crosshairCenter_;
+    std::vector<MprGuide> mprGuides_;
+    std::optional<Point2> mprCenter_;
+    GuideHit hoverGuide_;
+    GuideHit dragGuide_;
+    QPointF guideGrabOffset_;     // mouse minus the grabbed point, at press
+    double slabGrab_ = 0.0;       // same, across the line, for slab handles
+    std::optional<Vec3> rotateLast_;
+    QCursor rotateCursor_;
 
     // interaction
     Drag drag_ = Drag::None;
@@ -257,6 +322,7 @@ private:
     QPointF labelBefore_;
     AnnotationPtr pending_;  // multi-step annotation (angle, cobb)
     AnnotationPtr selected_;
+    void setSelected(const AnnotationPtr& a);
     std::optional<QPointF> probePos_;
     std::optional<QPointF> hoverPos_;
 

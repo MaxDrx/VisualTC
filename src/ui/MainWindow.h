@@ -19,6 +19,7 @@ class QLabel;
 class QMenu;
 class QProgressBar;
 class QTimer;
+class QToolBar;
 class QToolButton;
 
 namespace vtc {
@@ -79,11 +80,14 @@ private:
     void showImportIssues();
     void updateEmptyHint();
     void openSeries(const QString& seriesId, Viewport* target = nullptr);
+    void showReferenceLinesContext();
     void startMpr(const QString& seriesId = QString());
     void toggleMpr(bool on);
     void setTool(Tool tool);
     void applyPreset(const WindowPreset& preset);
     void rebuildPresetMenu();
+    void applyColorMap(ColorMap map);
+    static QPixmap colorMapSwatch(ColorMap map);
     void saveCurrentWindowAsPreset();
     void onActiveChanged();
     void updateActionStates();
@@ -94,6 +98,9 @@ private:
     void showAbout();
     void showShortcuts();
     void setSlab(double thickness, int mode);
+    void syncMprMenu();
+    void fitToolbar();
+    [[nodiscard]] int toolbarWidthNeeded() const;
     void runAutomationStep();
     QString activeSeriesId() const;
 
@@ -132,7 +139,6 @@ private:
     QAction* actActual_ = nullptr;
     QAction* actReset_ = nullptr;
     QAction* actMpr_ = nullptr;
-    QAction* act3d_ = nullptr;
     QAction* actCine_ = nullptr;
     QAction* actUndo_ = nullptr;
     QAction* actRedo_ = nullptr;
@@ -145,7 +151,15 @@ private:
     QMenu* layoutMenu_ = nullptr;
     QMenu* measureMenu_ = nullptr;
     QMenu* roiMenu_ = nullptr;
+    QMenu* lutMenu_ = nullptr;
+    QActionGroup* lutGroup_ = nullptr;
     QMenu* slabMenu_ = nullptr;
+    QMenu* mprMenu_ = nullptr;
+    QActionGroup* slabGroup_ = nullptr;
+    std::vector<QAction*> slabModeActions_;
+    QToolBar* toolbar_ = nullptr;
+    std::vector<QToolButton*> compactOrder_;  // first loses its text first
+    bool fittingToolbar_ = false;
 
     // MPR volume construction
     std::thread mprThread_;

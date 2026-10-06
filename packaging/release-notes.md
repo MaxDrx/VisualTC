@@ -12,6 +12,17 @@ Downloads e digite `sudo apt install ./visualtc_amd64.deb`.
 
 Os demais arquivos abaixo (código-fonte, `SHA256SUMS.txt`) não são necessários para usar o programa.
 
+### Novidades desta versão
+
+- **MPR direto com o mouse**: arraste a linha colorida para mover o plano, a bolinha na ponta para girar
+  (MPR oblíquo em qualquer ângulo) e a barrinha ao lado para dar espessura (MIP/MinIP) só àquele plano.
+- **Linhas de referência** corrigidas: aparecem sobre o topograma mesmo quando ele tem outro sistema de
+  coordenadas; com uma só imagem na tela, o botão **Ref.** abre o topograma ao lado.
+- **Tabela de cores (LUT)**: ferro quente, PET, arco-íris, osso, cobre, fogo e gelo (botão **LUT**).
+- **Histograma da ROI** corrigido (atalho ⌘⇧H no Mac, Ctrl+Shift+H no Windows/Linux).
+- Barra de ferramentas com mais espaço entre os botões e adaptada a telas de notebook.
+- A reconstrução 3D foi retirada para deixar o programa mais leve; o MPR continua completo.
+
 ### Apareceu um aviso na primeira vez?
 
 - **Windows** — “O Windows protegeu o computador”: clique em **Mais informações** › **Executar assim mesmo**.

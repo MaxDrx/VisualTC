@@ -15,7 +15,7 @@
   #define OutputDir "..\..\dist"
 #endif
 #ifndef AppVersion
-  #define AppVersion "0.2.0"
+  #define AppVersion "0.3.0"
 #endif
 #define AppName "VisualTC"
 #define AppExe "VisualTC.exe"

@@ -86,7 +86,6 @@ permissivas listadas em <https://doc.qt.io/qt-6/licenses-used-in-qt.html>.
 
 | Componente | Versão prevista | Licença | Uso |
 |---|---|---|---|
-| VTK | 9.3 | BSD-3-Clause | volume rendering 3D (v1.0) |
 | DCMTK | 3.6.8 | BSD-3-Clause (e licenças dos módulos) | comunicação PACS |
 | ITK | 5.4 | Apache-2.0 | processamento avançado, se necessário |
 

@@ -1,5 +1,7 @@
 #include "mpr/MprSource.h"
 
+#include <QLocale>
+#include <cmath>
 #include <cstdio>
 
 #include "app/Theme.h"
@@ -9,9 +11,21 @@ namespace vtc {
 MprSource::MprSource(std::shared_ptr<MprSession> session, MprOrientation orientation, QObject* parent)
     : ImageSource(parent), session_(std::move(session)), orientation_(orientation) {
     connect(session_.get(), &MprSession::renderingChanged, this, [this] {
+        if (cache_ && cacheVersion_ == session_->version(orientation_)) {
+            return;  // this plane did not change (or is already recomputed)
+        }
         cache_.reset();
         Q_EMIT contentChanged();
     });
+}
+
+QString MprSource::slabModeName(SlabMode m) {
+    switch (m) {
+        case SlabMode::MIP: return QStringLiteral("MIP");
+        case SlabMode::MinIP: return QStringLiteral("MinIP");
+        case SlabMode::Average: return tr("Média");
+    }
+    return {};
 }
 
 QColor MprSource::colorFor(MprOrientation o) {
@@ -31,18 +45,19 @@ ReslicePlane MprSource::planeAt(int index) const {
 }
 
 DecodedFramePtr MprSource::image(int index) {
-    if (cache_ && cacheIndex_ == index && cacheVersion_ == session_->version()) {
+    const int version = session_->version(orientation_);
+    if (cache_ && cacheIndex_ == index && cacheVersion_ == version) {
         return cache_;
     }
-    cache_ = reslice(session_->volume(), planeAt(index), session_->slab(), session_->interpolation());
+    cache_ = reslice(session_->volume(), planeAt(index), session_->slab(orientation_), session_->interpolation());
     cacheIndex_ = index;
-    cacheVersion_ = session_->version();
+    cacheVersion_ = version;
     return cache_;
 }
 
 FrameGeometry MprSource::geometryAt(int index) const {
     FrameGeometry g = planeAt(index).toFrameGeometry();
-    const auto slab = session_->slab();
+    const auto slab = session_->slab(orientation_);
     if (slab.thickness > 0.0) {
         g.sliceThickness = slab.thickness;
     }
@@ -68,13 +83,12 @@ const FrameInfo* MprSource::frameInfoAt(int /*index*/) const {
 
 QString MprSource::seriesLabel() const {
     QString label = "MPR " + QString::fromStdString(toLabel(orientation_));
-    if (session_->isOblique()) {
+    if (session_->isOblique(orientation_)) {
         label += tr(" (oblíquo)");
     }
-    const auto slab = session_->slab();
+    const auto slab = session_->slab(orientation_);
     if (slab.thickness > 0.0) {
-        const char* mode = slab.mode == SlabMode::MIP ? "MIP" : (slab.mode == SlabMode::MinIP ? "MinIP" : "Média");
-        label += QStringLiteral(" · %1 %2 mm").arg(QString::fromLatin1(mode)).arg(slab.thickness);
+        label += QStringLiteral(" · %1 %2 mm").arg(slabModeName(slab.mode), QLocale().toString(slab.thickness, 'f', 1));
     }
     const auto& s = session_->series();
     if (s) {
@@ -99,36 +113,56 @@ bool MprSource::isCt() const { return session_->volume().isCt(); }
 
 int MprSource::initialIndex() const { return session_->view(orientation_).sliceIndexOf(session_->center()); }
 
+std::optional<QSizeF> MprSource::fitExtentMm() const {
+    // An oblique plane's bounding box grows and shrinks as it turns; framing
+    // the straight view's extent keeps the scale steady while the user rotates.
+    const MprView& v = session_->orthogonalView(orientation_);
+    return QSizeF(v.width * v.spacingU, v.height * v.spacingV);
+}
+
 Point2 MprSource::crosshairPixel(int index) const {
     const ReslicePlane p = planeAt(index);
     const Vec3 rel = session_->center() - p.origin;
     return {rel.dot(p.u) / p.spacingU, rel.dot(p.v) / p.spacingV};
 }
 
-std::vector<GuideLine> MprSource::crosshairLines(int index) const {
-    std::vector<GuideLine> lines;
+std::vector<MprGuide> MprSource::guides(int index) const {
+    std::vector<MprGuide> out;
     const ReslicePlane p = planeAt(index);
-    const Point2 c = crosshairPixel(index);
-    const double reach = 4.0 * std::max(p.width, p.height);
     const Vec3 n = p.normal();
+    auto toPixels = [&p](const Vec3& d) { return Point2{d.dot(p.u) / p.spacingU, d.dot(p.v) / p.spacingV}; };
     for (auto other : {MprOrientation::Axial, MprOrientation::Coronal, MprOrientation::Sagittal}) {
         if (other == orientation_) {
             continue;
         }
-        const Vec3 dir = n.cross(session_->view(other).n);
+        const Vec3 np = session_->view(other).n;
+        const Vec3 dir = n.cross(np);
         if (dir.norm() < 1e-6) {
             continue;  // parallel planes: no intersection line
         }
         const Vec3 d = dir.normalized();
-        double dx = d.dot(p.u) / p.spacingU;
-        double dy = d.dot(p.v) / p.spacingV;
-        const double len = std::hypot(dx, dy);
-        dx /= len;
-        dy /= len;
-        lines.push_back({{c.x - dx * reach, c.y - dy * reach}, {c.x + dx * reach, c.y + dy * reach}, colorFor(other),
-                         false});
+        // In-plane direction across the line; the slab boundary (other plane
+        // moved by t/2 along its normal) crosses this view at e * (t/2) / (e . np).
+        Vec3 e = n.cross(d);
+        double en = e.dot(np);
+        if (std::abs(en) < 1e-6) {
+            continue;
+        }
+        if (en < 0.0) {
+            e = -e;
+            en = -en;
+        }
+        MprGuide g;
+        g.plane = static_cast<int>(other);
+        g.direction = toPixels(d);
+        g.mmOffset = toPixels(e / en);
+        const SlabParams slab = session_->slab(other);
+        g.thickness = slab.thickness;
+        g.slabMode = slabModeName(slab.mode);
+        g.color = colorFor(other);
+        out.push_back(g);
     }
-    return lines;
+    return out;
 }
 
 }  // namespace vtc

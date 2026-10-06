@@ -30,15 +30,18 @@ public:
     [[nodiscard]] std::string annotationKey(int index) const override;
     [[nodiscard]] bool isCt() const override;
     [[nodiscard]] int initialIndex() const override;
+    [[nodiscard]] std::optional<QSizeF> fitExtentMm() const override;
 
     [[nodiscard]] MprOrientation orientation() const { return orientation_; }
     [[nodiscard]] const std::shared_ptr<MprSession>& session() const { return session_; }
     [[nodiscard]] ReslicePlane planeAt(int index) const;
-    // Crosshair lines of the two other planes, in this view's pixel coordinates.
-    [[nodiscard]] std::vector<GuideLine> crosshairLines(int index) const;
+    // Lines of the two other planes through the crosshair (with their slab
+    // geometry), in this view's pixel coordinates.
+    [[nodiscard]] std::vector<MprGuide> guides(int index) const;
     [[nodiscard]] Point2 crosshairPixel(int index) const;
 
     static QColor colorFor(MprOrientation o);
+    static QString slabModeName(SlabMode m);
 
 private:
     std::shared_ptr<MprSession> session_;

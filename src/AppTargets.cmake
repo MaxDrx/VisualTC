@@ -59,7 +59,6 @@ qt_add_resources(VisualTC "visualtc_resources"
         ${CMAKE_SOURCE_DIR}/resources/icons/roi-freehand.svg
         ${CMAKE_SOURCE_DIR}/resources/icons/probe.svg
         ${CMAKE_SOURCE_DIR}/resources/icons/mpr.svg
-        ${CMAKE_SOURCE_DIR}/resources/icons/cube.svg
         ${CMAKE_SOURCE_DIR}/resources/icons/reset.svg
         ${CMAKE_SOURCE_DIR}/resources/icons/settings.svg
         ${CMAKE_SOURCE_DIR}/resources/icons/rotate-cw.svg
@@ -81,6 +80,9 @@ qt_add_resources(VisualTC "visualtc_resources"
         ${CMAKE_SOURCE_DIR}/resources/icons/sidebar.svg
         ${CMAKE_SOURCE_DIR}/resources/icons/collapse-left.svg
         ${CMAKE_SOURCE_DIR}/resources/icons/collapse-right.svg
+        ${CMAKE_SOURCE_DIR}/resources/icons/menu-arrow.svg
+        ${CMAKE_SOURCE_DIR}/resources/icons/histogram.svg
+        ${CMAKE_SOURCE_DIR}/resources/icons/lut.svg
 )
 target_link_libraries(VisualTC PRIVATE visualtc_ui)
 add_dependencies(VisualTC visualtc-worker)

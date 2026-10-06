@@ -27,7 +27,7 @@ std::string describe(GeometryIssue issue);  // pt-BR, user-facing
 struct StackGeometry {
     bool spatial = false;      // every frame has position, orientation and spacing
     bool parallel = false;     // same orientation and size for all frames
-    bool volumetric = false;   // safe to build a volume (MPR / 3D)
+    bool volumetric = false;   // safe to build a volume (MPR)
     int rows = 0;
     int columns = 0;
     Vec3 rowDir{1, 0, 0};
