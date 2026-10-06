@@ -28,7 +28,7 @@ ctest --preset linux-release
 | Preset | Sistema | Observações |
 |---|---|---|
 | `linux-release` | Ubuntu 22.04+ x86_64 | Ninja, Release, vcpkg `x64-linux` |
-| `linux-debug-asan` | Linux | Debug + AddressSanitizer + UndefinedBehaviorSanitizer |
+| `linux-debug-asan` | Linux | Debug + AddressSanitizer + UndefinedBehaviorSanitizer no código do VisualTC; bibliotecas de terceiros em Release (as asserções de depuração do GDCM abortam com arquivos corrompidos de propósito) |
 | `linux-local` | Linux sem vcpkg | dependências em `/opt/visualtc-deps` (ver §3) |
 | `windows-msvc-release` | Windows 10/11 x64 | Visual Studio 2022, `x64-windows` |
 | `macos-arm64-release` | macOS 12+ Apple Silicon | triplet `arm64-osx-visualtc` (`cmake/triplets`: dependências também para macOS 12) |

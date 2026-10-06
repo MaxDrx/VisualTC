@@ -30,7 +30,11 @@
       "displayName": "Linux Debug + AddressSanitizer/UBSan",
       "inherits": "vcpkg",
       "generator": "Ninja",
-      "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug", "VISUALTC_ENABLE_SANITIZERS": "ON" },
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "VISUALTC_ENABLE_SANITIZERS": "ON",
+        "CMAKE_MAP_IMPORTED_CONFIG_DEBUG": "Release"
+      },
       "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Linux" }
     },
     {

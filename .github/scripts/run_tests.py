@@ -11,10 +11,14 @@ import sys
 
 MAX_ANNOTATIONS = 9          # GitHub shows at most 10 errors per step
 MAX_MESSAGE = 3800
+# Lines that explain a failure (assertions, sanitizer reports, crashes);
+# library chatter such as GDCM's "Warning: In ..." is left out when the
+# output is too long.
 KEYWORDS = re.compile(
-    r"FAIL|Error|error|Actual|Expected|Loc:|REQUIRE|CHECK|with expansion|due to|"
-    r"exception|Exception|runtime error|AddressSanitizer|LeakSanitizer|SUMMARY|"
-    r"QFATAL|QWARN|Segmentation|Timeout|abort|terminate",
+    r"FAILED|FAIL!|Actual|Expected|Loc:|REQUIRE|CHECK|with expansion|with message|due to|"
+    r"exception|Exception|what\(\)|runtime error|AddressSanitizer|LeakSanitizer|"
+    r"UndefinedBehaviorSanitizer|SUMMARY:|#\d+ 0x|QFATAL|Segmentation|Timeout|"
+    r"[Aa]ssertion|terminate called",
 )
 RESULT = re.compile(r"^\s*\d+/\d+ Test\s+#\d+: (\S+) .*(\*\*\*|Failed|Exception|Timeout)")
 BOUNDARY = re.compile(r"^\s*(\d+/\d+ Test\s+#\d+:|Start\s+\d+:|\d+% tests passed)")
@@ -47,11 +51,11 @@ def failure_blocks(lines):
 def summarize(block):
     if sum(len(line) + 1 for line in block) <= MAX_MESSAGE:
         return "\n".join(block)
-    keep = set()
+    keep = set(range(max(0, len(block) - 12), len(block)))  # how it ended
     for k, line in enumerate(block):
         if KEYWORDS.search(line):
             keep.update(range(max(0, k - 2), min(len(block), k + 4)))
-    picked = [block[k] for k in sorted(keep)] or block[-40:]
+    picked = [block[k] for k in sorted(keep)]
     text = "\n".join(picked)
     return text[:MAX_MESSAGE] + ("\n[...]" if len(text) > MAX_MESSAGE else "")
 

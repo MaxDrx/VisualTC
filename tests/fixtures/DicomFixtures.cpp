@@ -28,6 +28,42 @@ namespace vtc::test {
 
 namespace {
 
+// GDCM file names are narrow strings (taken as UTF-8 on Windows) and its
+// readers/writers keep the file open until destroyed, which on Windows
+// blocks replacing it. Streams opened from std::filesystem::path accept
+// any name on every system and are closed when they leave scope.
+bool writeTo(gdcm::Writer& w, const std::filesystem::path& file) {
+    std::ofstream out(file, std::ios::binary | std::ios::trunc);
+    if (!out) {
+        return false;
+    }
+    w.SetStream(out);
+    const bool ok = w.Write();
+    out.close();
+    return ok && !out.fail();
+}
+
+bool readFrom(gdcm::Reader& r, const std::filesystem::path& file) {
+    std::ifstream in(file, std::ios::binary);
+    if (!in) {
+        return false;
+    }
+    r.SetStream(in);
+    return r.Read();  // GDCM reads the whole data set: the stream is not used afterwards
+}
+
+// Writes next to the file and then replaces it.
+bool replaceWith(gdcm::Writer& w, const std::filesystem::path& file) {
+    std::filesystem::path tmp = file;
+    tmp += ".tmp";
+    if (!writeTo(w, tmp)) {
+        return false;
+    }
+    std::error_code ec;
+    std::filesystem::rename(tmp, file, ec);
+    return !ec;
+}
+
 std::string ds(double v) {
     char buf[32];
     std::snprintf(buf, sizeof(buf), "%.10g", v);
@@ -241,14 +277,12 @@ bool writeDicom(const std::filesystem::path& file, const SyntheticImage& img, En
     }
     d.Replace(pixels);
 
-    w.SetFileName(file.string().c_str());
-    return w.Write();
+    return writeTo(w, file);
 }
 
 bool transcode(const std::filesystem::path& in, const std::filesystem::path& out, Encoding encoding) {
     gdcm::ImageReader r;
-    r.SetFileName(in.string().c_str());
-    if (!r.Read()) {
+    if (!readFrom(r, in)) {
         return false;
     }
     gdcm::ImageChangeTransferSyntax change;
@@ -258,54 +292,36 @@ bool transcode(const std::filesystem::path& in, const std::filesystem::path& out
         return false;
     }
     gdcm::ImageWriter w;
-    w.SetFileName(out.string().c_str());
     w.SetFile(r.GetFile());
     w.SetImage(change.GetOutput());
-    return w.Write();
+    return writeTo(w, out);
 }
 
 bool setPhotometric(const std::filesystem::path& file, const std::string& photometric) {
     gdcm::Reader r;
-    r.SetFileName(file.string().c_str());
-    if (!r.Read()) {
+    if (!readFrom(r, file)) {
         return false;
     }
     putString(r.GetFile().GetDataSet(), 0x0028, 0x0004, gdcm::VR::CS, photometric);
     gdcm::Writer w;
     w.SetFile(r.GetFile());
-    const auto tmp = file.string() + ".pi.tmp";
-    w.SetFileName(tmp.c_str());
-    if (!w.Write()) {
-        return false;
-    }
-    std::error_code ec;
-    std::filesystem::rename(tmp, file, ec);
-    return !ec;
+    return replaceWith(w, file);
 }
 
 bool setUS(const std::filesystem::path& file, std::uint16_t group, std::uint16_t element, std::uint16_t value) {
     gdcm::Reader r;
-    r.SetFileName(file.string().c_str());
-    if (!r.Read()) {
+    if (!readFrom(r, file)) {
         return false;
     }
     putUS(r.GetFile().GetDataSet(), group, element, value);
     gdcm::Writer w;
     w.SetFile(r.GetFile());
-    const auto tmp = file.string() + ".us.tmp";
-    w.SetFileName(tmp.c_str());
-    if (!w.Write()) {
-        return false;
-    }
-    std::error_code ec;
-    std::filesystem::rename(tmp, file, ec);
-    return !ec;
+    return replaceWith(w, file);
 }
 
 bool convertToFloatPixelData(const std::filesystem::path& file) {
     gdcm::Reader r;
-    r.SetFileName(file.string().c_str());
-    if (!r.Read()) {
+    if (!readFrom(r, file)) {
         return false;
     }
     gdcm::DataSet& d = r.GetFile().GetDataSet();
@@ -333,14 +349,7 @@ bool convertToFloatPixelData(const std::filesystem::path& file) {
     putUS(d, 0x0028, 0x0102, 31);
     gdcm::Writer w;
     w.SetFile(r.GetFile());
-    const auto tmp = file.string() + ".float.tmp";
-    w.SetFileName(tmp.c_str());
-    if (!w.Write()) {
-        return false;
-    }
-    std::error_code ec;
-    std::filesystem::rename(tmp, file, ec);
-    return !ec;
+    return replaceWith(w, file);
 }
 
 std::vector<std::uint8_t> readBytes(const std::filesystem::path& file) {
@@ -392,7 +401,12 @@ bool writeArchive(const std::filesystem::path& file, ArchiveFormat format, const
             rc = archive_write_set_passphrase(a, password.c_str());
         }
     }
-    if (rc != ARCHIVE_OK || archive_write_open_filename(a, file.string().c_str()) != ARCHIVE_OK) {
+#ifdef _WIN32
+    const int openRc = rc == ARCHIVE_OK ? archive_write_open_filename_w(a, file.c_str()) : ARCHIVE_FATAL;
+#else
+    const int openRc = rc == ARCHIVE_OK ? archive_write_open_filename(a, file.c_str()) : ARCHIVE_FATAL;
+#endif
+    if (rc != ARCHIVE_OK || openRc != ARCHIVE_OK) {
         archive_write_free(a);
         return false;
     }
@@ -545,8 +559,7 @@ bool writeEnhancedCt(const std::filesystem::path& file, const EnhancedSpec& spec
     px.SetVR(gdcm::VR::OW);
     px.SetByteValue(reinterpret_cast<const char*>(pixels.data()), static_cast<std::uint32_t>(pixels.size() * 2));
     d.Replace(px);
-    w.SetFileName(file.string().c_str());
-    return w.Write();
+    return writeTo(w, file);
 }
 
 }  // namespace vtc::test
