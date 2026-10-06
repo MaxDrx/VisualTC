@@ -103,6 +103,12 @@ private:
 
 private Q_SLOTS:
     void initTestCase() {
+        // QSettings needs an organization/application name to store anything
+        // (on Windows and macOS it silently refuses otherwise). A separate
+        // name keeps the tests away from the real VisualTC preferences.
+        QCoreApplication::setOrganizationName(QStringLiteral("VisualTC-Testes"));
+        QCoreApplication::setApplicationName(QStringLiteral("visualtc_ui_tests"));
+        QStandardPaths::setTestModeEnabled(true);
         QVERIFY(tmp_.isValid());
         writeSeries(tmp_.path());
         DecoderClient::initialize(true, QStringLiteral(VISUALTC_WORKER_PATH));
