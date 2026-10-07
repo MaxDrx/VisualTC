@@ -18,6 +18,7 @@
 #include <QtTest>
 #include <cmath>
 #include <numbers>
+#include <thread>
 
 #include "app/AppSettings.h"
 #include "app/I18n.h"
@@ -703,6 +704,23 @@ private Q_SLOTS:
     void isolatedDecoderSurvivesCrash() {
         const std::string path = seriesA_->frames.front().instance->filePath;
         QVERIFY(DecoderClient::decode(path).ok());
+        // A worker that ended while idle (killed by the system, a computer
+        // that slept) is replaced without failing the next image. Decoding
+        // threads have no event loop: nothing tells QProcess it ended.
+        std::string silentEndError = "not run";
+        std::thread decoderThread([&path, &silentEndError] {
+            if (!DecoderClient::decode(path).ok()) {
+                silentEndError = "first decode failed";
+                return;
+            }
+            DecoderClient::endWorkerSilentlyForTest();
+            std::this_thread::sleep_for(std::chrono::milliseconds(300));
+            const auto again = DecoderClient::decode(path);
+            silentEndError = again.ok() ? std::string() : again.error;
+            DecoderClient::releaseThreadWorker();
+        });
+        decoderThread.join();
+        QVERIFY2(silentEndError.empty(), silentEndError.c_str());
         QVERIFY(DecoderClient::crashWorkerForTest());
         // The next request transparently starts a fresh worker.
         const auto again = DecoderClient::decode(path);

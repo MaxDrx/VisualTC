@@ -39,6 +39,8 @@ public:
 
     // Test hook: asks the calling thread's worker to crash.
     static bool crashWorkerForTest();
+    // Tests: the worker of this thread ends behind the client's back.
+    static void endWorkerSilentlyForTest();
 };
 
 }  // namespace vtc

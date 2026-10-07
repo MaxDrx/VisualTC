@@ -58,6 +58,14 @@ por captura de tela). A numeração (§) segue as seções do prompt mestre.
   continuam em Arquivo e Exibir); layout **1×3**.
 - Sobre: "Criado por: Dr Marcelo Duarte - Brasil"; uso destinado a estudos e
   pesquisas.
+- **Correção de robustez**: um decodificador isolado que tinha terminado
+  enquanto ocioso (computador lento, sobrecarregado ou que voltou da
+  suspensão) fazia a próxima imagem ser relatada como "corrompida" e nunca
+  mais tentada. Agora o processo encerrado é detectado e substituído, e uma
+  falha do processo tem uma nova tentativa com outro (um arquivo que de fato
+  derruba o decodificador continua sendo relatado). Teste
+  `isolatedDecoderSurvivesCrash` (fim silencioso numa thread sem event loop);
+  achado pelo CI no runner macOS Intel.
 
 ### Correções e melhorias (0.3.0, após o teste no MacBook)
 - **Linhas de referência**: aparecem também quando o topograma tem outro

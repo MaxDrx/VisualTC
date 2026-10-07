@@ -90,9 +90,19 @@ public:
         return std::vector<std::uint8_t>(payload.begin(), payload.end());
     }
 
+    // Tests: the worker ends without this client noticing (as when the
+    // system kills an idle process).
+    void killSilently() {
+        if (proc_) {
+            proc_->kill();
+        }
+    }
+
 private:
     bool ensureStarted() {
-        if (proc_ && proc_->state() == QProcess::Running) {
+        // Without an event loop, QProcess only learns that the worker ended
+        // when asked: a zero wait collects that news before it is reused.
+        if (proc_ && proc_->state() == QProcess::Running && !proc_->waitForFinished(0)) {
             return true;
         }
         proc_.reset();
@@ -107,8 +117,9 @@ private:
         proc_->setStandardErrorFile(QProcess::nullDevice());
         proc_->setReadChannel(QProcess::StandardOutput);
         proc_->start(QIODevice::ReadWrite | QIODevice::Unbuffered);
-        if (!proc_->waitForStarted(10'000)) {
-            logError("decoder", "Não foi possível iniciar o decodificador isolado.");
+        if (!proc_->waitForStarted(20'000)) {
+            logError("decoder", "Não foi possível iniciar o decodificador isolado: " +
+                                    proc_->errorString().toStdString());
             proc_.reset();
             return false;
         }
@@ -208,8 +219,15 @@ ParseResult DecoderClient::parse(const std::filesystem::path& file) {
         return r;
     }
     bool timedOut = false;
-    const auto response = threadWorker().roundTrip(makeRequest(WorkerOp::Parse, pathToUtf8(file)), kParseTimeoutMs,
-                                                   &timedOut);
+    const auto request = makeRequest(WorkerOp::Parse, pathToUtf8(file));
+    auto response = threadWorker().roundTrip(request, kParseTimeoutMs, &timedOut);
+    if (!response && !timedOut) {
+        // A worker that could not start or had ended (a busy or sleeping
+        // computer): one more try with a fresh process. A file that really
+        // crashes the decoder fails again and is reported.
+        logWarning("decoder", "Decodificador isolado indisponível; nova tentativa com outro processo.");
+        response = threadWorker().roundTrip(request, kParseTimeoutMs, &timedOut);
+    }
     ParseResult r;
     if (!response || !decodeParseResult(*response, r)) {
         r = {};
@@ -231,8 +249,12 @@ DecodeResult DecoderClient::decode(const std::string& utf8Path) {
         return decodeInstance(*parsed.instance);
     }
     bool timedOut = false;
-    const auto response = threadWorker().roundTrip(makeRequest(WorkerOp::Decode, utf8Path), kDecodeTimeoutMs,
-                                                   &timedOut);
+    const auto request = makeRequest(WorkerOp::Decode, utf8Path);
+    auto response = threadWorker().roundTrip(request, kDecodeTimeoutMs, &timedOut);
+    if (!response && !timedOut) {
+        logWarning("decoder", "Decodificador isolado indisponível; nova tentativa com outro processo.");
+        response = threadWorker().roundTrip(request, kDecodeTimeoutMs, &timedOut);
+    }
     DecodeResult d;
     if (!response || !decodeDecodeResult(*response, d)) {
         d = {};
@@ -267,6 +289,8 @@ ExtractResult DecoderClient::extract(const ExtractRequest& request, const std::a
 }
 
 void DecoderClient::releaseThreadWorker() { t_worker.reset(); }
+
+void DecoderClient::endWorkerSilentlyForTest() { threadWorker().killSilently(); }
 
 bool DecoderClient::crashWorkerForTest() {
     bool timedOut = false;
