@@ -1,6 +1,6 @@
-# Estado do projeto — VisualTC 0.3.0
+# Estado do projeto — VisualTC 0.4.0
 
-Atualizado em 06/10/2026 (versão 0.3.0: correções do teste no MacBook — linhas de referência, histograma, LUT colorida, barra de ferramentas — e MPR manipulado direto nas linhas; reconstrução 3D retirada). Convenção: um item só entra em **IMPLEMENTADO**
+Atualizado em 06/10/2026 (versão 0.4.0: idiomas português/espanhol/inglês, cor de destaque, botão Plano, fechar um estudo, menu do MPR e botão Cruz corrigidos, layout 1×3; antes, 0.3.0: MPR manipulado nas linhas, LUT colorida, linhas de referência e histograma corrigidos, 3D retirado). Convenção: um item só entra em **IMPLEMENTADO**
 depois de compilado e testado (teste automatizado e/ou verificação visual
 por captura de tela). A numeração (§) segue as seções do prompt mestre.
 
@@ -34,6 +34,30 @@ por captura de tela). A numeração (§) segue as seções do prompt mestre.
   largura lembrados; pode ir para a borda direita.
 - Abertura pelo sistema: argumentos (inclusive unidade `D:\` vinda do
   Explorer) e `QFileOpenEvent` do macOS ("Abrir com", ícone no Dock).
+
+### Novidades e correções (0.4.0)
+- **Idiomas**: português (Brasil), espanhol e inglês (Preferências ›
+  Interface), com tradutor próprio (`app/I18n`, tabelas
+  `resources/i18n/*.json`) — sem ferramentas do Qt Linguist na compilação.
+  As mensagens do núcleo (sem Qt) são traduzidas na exibição, inclusive as
+  com partes variáveis. Teste `translations_complete` garante que nenhum
+  texto fica sem tradução; textos padrão do Qt embutidos quando disponíveis.
+- **Cor de destaque**: azul, sépia, amarelo, dourado, verde neon, laranja
+  (Preferências ou Exibir › Cor de destaque), aplicada na hora.
+- **Botão Plano**: axial → sagital → coronal na série do viewport ativo; o
+  plano adquirido usa as imagens originais, os demais são reconstruídos (o
+  volume é reaproveitado entre MPR e Plano).
+- **Fechar um estudo**: × no cabeçalho do estudo no painel; libera viewports,
+  MPR, cache e arquivos extraídos daquele estudo.
+- **Menu do MPR** sem submenu (o de espessura não abria no Mac) e com cópia
+  própria para o botão da barra; escolher MIP/espessura com o MPR fechado
+  abre o MPR já com a opção.
+- **Cruz** passa a mostrar/ocultar as linhas do MPR (X); posicionar o
+  cruzamento virou Shift+X.
+- Barra: "Cortes" → **Rolar**; botões Capturar e Reset retirados (funções
+  continuam em Arquivo e Exibir); layout **1×3**.
+- Sobre: "Criado por: Dr Marcelo Duarte - Brasil"; uso destinado a estudos e
+  pesquisas.
 
 ### Correções e melhorias (0.3.0, após o teste no MacBook)
 - **Linhas de referência**: aparecem também quando o topograma tem outro
@@ -143,7 +167,7 @@ por captura de tela). A numeração (§) segue as seções do prompt mestre.
   publicada com nomes fixos por tag `v*`; página de download (`site/`).
 
 ## EM DESENVOLVIMENTO
-- Nenhum item em andamento. Versão 0.3.0 aguardando o teste do usuário no
+- Nenhum item em andamento. Versão 0.4.0 aguardando o teste do usuário no
   MacBook.
 
 ## FORA DO ESCOPO (decisão de 06/10/2026)
@@ -163,7 +187,6 @@ por captura de tela). A numeração (§) segue as seções do prompt mestre.
 - Salvar/carregar medidas (Presentation State ou arquivo próprio) e
   relatório de medidas.
 - PACS (C-FIND/C-MOVE/C-STORE, DICOMweb) com DCMTK.
-- Tradução da interface para inglês/espanhol (strings já em `tr()`).
 - Certificados de assinatura (Apple Developer ID + notarização; Authenticode
   no Windows): o CI já assina quando os *secrets* existem; a obtenção dos
   certificados é decisão (e custo) do distribuidor.
@@ -238,9 +261,9 @@ GDCM 3.0.24, libarchive 3.8.7, Catch2 3.7.1.
 
 | Conjunto | Resultado |
 |---|---|
-| `ctest` Release com `-Werror` (`linux-local`) | 95/95 aprovados (94 casos Catch2 + suíte de interface); o teste de localidade roda com `pt_BR.UTF-8` instalada (no CI ela é gerada) |
-| `ctest` Debug + ASan + UBSan | 95/95 aprovados, sem erros do sanitizer |
-| Interface (QtTest offscreen) | 20 testes: janela DICOM, arrasto W/L, roda/teclado, régua 50 mm, ROI em HU, sincronização espacial, crosshair do MPR, **linhas do MPR (mover plano, girar 30° com a linha seguindo o mouse, espessura de um só plano, centro)**, **planos independentes do MPR (espessura/versão por plano, 460 rotações sem perder a perpendicularidade)**, **LUT colorida**, **histograma habilitado pela ROI**, **linhas de referência com topograma de outro FoR**, queda do worker, falha sem laço de decodificação, multiframe maior que o cache, atalhos únicos e preset pela tecla 1, ZIP AES com senha errada e certa, limpeza da pasta temporária, painel de séries recolhível/estreito/lembrado, abertura por `QFileOpenEvent` |
+| `ctest` Release com `-Werror` (`linux-local`) | todos aprovados (casos Catch2 + suíte de interface + traduções completas); o teste de localidade roda com `pt_BR.UTF-8` instalada (no CI ela é gerada) |
+| `ctest` Debug + ASan + UBSan | todos aprovados, sem erros do sanitizer |
+| Interface (QtTest offscreen) | 25 testes: **botão Plano (sagital, coronal, volta ao original), layout 1×3 e barra sem Capturar/Reset**, **menu do MPR sem submenu (5 mm abre o MPR) e Cruz que oculta/mostra as linhas**, **× fecha só um estudo e ele pode ser reaberto**, **cores de destaque e Preferências com idiomas**, **espanhol (menus, plurais, mensagens do núcleo com partes variáveis, vírgula decimal)**, mais janela DICOM, arrasto W/L, roda/teclado, régua 50 mm, ROI em HU, sincronização espacial, crosshair do MPR, **linhas do MPR (mover plano, girar 30° com a linha seguindo o mouse, espessura de um só plano, centro)**, **planos independentes do MPR (espessura/versão por plano, 460 rotações sem perder a perpendicularidade)**, **LUT colorida**, **histograma habilitado pela ROI**, **linhas de referência com topograma de outro FoR**, queda do worker, falha sem laço de decodificação, multiframe maior que o cache, atalhos únicos e preset pela tecla 1, ZIP AES com senha errada e certa, limpeza da pasta temporária, painel de séries recolhível/estreito/lembrado, abertura por `QFileOpenEvent` |
 | Exames compactados (`[archive]`) | detecção pelo conteúdo; ZIP, ZIP sem compressão, 7z, TGZ, TBZ2, TXZ, TZST, ISO, `.dcm.gz`; nomes hostis e link simbólico; aninhados; ZipCrypto e AES-256; bombas e limites; 600 arquivos compactados danificados; protocolo do worker rejeita caminhos fora do destino. App real: ZIP de 26 MB com 425 imagens aberto em ~1,9 s, pasta temporária apagada ao sair |
 | Localidade | app sem processo isolado com `LC_ALL=pt_BR.UTF-8`: calibração, espessura, posição e MPR corretos |
 | QA numérico | 1000 × 1 − 1024 = −24 HU; 100 px × 0,5 mm = 50 mm; VOI conforme PS3.3; MPR exato em fantomas lineares (axial, tilt, espaçamento irregular, oblíquo) |

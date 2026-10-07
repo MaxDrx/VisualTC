@@ -7,6 +7,17 @@
 
 namespace vtc {
 
+namespace {
+std::string patientKeyOf(const InstanceInfo& inst) { return inst.patientId + "|" + inst.patientName; }
+std::string studyKeyOf(const InstanceInfo& inst) {
+    return inst.studyInstanceUid.empty() ? "nostudy|" + patientKeyOf(inst) + "|" + inst.studyDate
+                                         : inst.studyInstanceUid;
+}
+std::string sopKeyOf(const InstanceInfo& inst) {
+    return inst.sopInstanceUid.empty() ? "path:" + inst.filePath : inst.sopInstanceUid;
+}
+}  // namespace
+
 std::string Series::description() const {
     if (frames.empty()) {
         return {};
@@ -45,7 +56,7 @@ std::size_t StudyDatabase::addInstances(const std::vector<InstancePtr>& instance
         }
         // Same image found twice (copies in two folders, DICOMDIR + files):
         // keep the first one.
-        const std::string sopKey = inst->sopInstanceUid.empty() ? "path:" + inst->filePath : inst->sopInstanceUid;
+        const std::string sopKey = sopKeyOf(*inst);
         if (!knownSop_.insert(sopKey).second) {
             ++duplicates_;
             continue;
@@ -57,6 +68,28 @@ std::size_t StudyDatabase::addInstances(const std::vector<InstancePtr>& instance
         rebuild();
     }
     return added;
+}
+
+std::vector<InstancePtr> StudyDatabase::removeStudy(const std::string& patientKey, const std::string& studyKey) {
+    std::vector<InstancePtr> removed;
+    std::vector<InstancePtr> kept;
+    kept.reserve(instances_.size());
+    for (const auto& inst : instances_) {
+        if (patientKeyOf(*inst) == patientKey && studyKeyOf(*inst) == studyKey) {
+            removed.push_back(inst);
+        } else {
+            kept.push_back(inst);
+        }
+    }
+    if (removed.empty()) {
+        return removed;
+    }
+    instances_ = std::move(kept);
+    for (const auto& inst : removed) {
+        knownSop_.erase(sopKeyOf(*inst));  // can be opened again later
+    }
+    rebuild();
+    return removed;
 }
 
 void StudyDatabase::clear() {
@@ -101,9 +134,8 @@ void StudyDatabase::rebuild() {
     std::map<std::string, InstancePtr> studySample;
 
     for (const auto& inst : instances_) {
-        const std::string patientKey = inst->patientId + "|" + inst->patientName;
-        const std::string studyKey =
-            inst->studyInstanceUid.empty() ? "nostudy|" + patientKey + "|" + inst->studyDate : inst->studyInstanceUid;
+        const std::string patientKey = patientKeyOf(*inst);
+        const std::string studyKey = studyKeyOf(*inst);
         const std::string seriesKey =
             inst->seriesInstanceUid.empty()
                 ? "noseries|" + studyKey + "|" + inst->modality + "|" + std::to_string(inst->seriesNumber.value_or(0))

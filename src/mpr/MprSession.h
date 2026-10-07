@@ -21,6 +21,7 @@ public:
     MprSession(VolumePtr volume, SeriesPtr series, QObject* parent = nullptr);
 
     [[nodiscard]] const ImageVolume& volume() const { return *volume_; }
+    [[nodiscard]] const VolumePtr& volumePtr() const { return volume_; }
     [[nodiscard]] const SeriesPtr& series() const { return series_; }
     [[nodiscard]] const MprView& view(MprOrientation o) const { return views_[idx(o)]; }
     [[nodiscard]] Vec3 center() const { return center_; }

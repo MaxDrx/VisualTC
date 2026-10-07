@@ -19,19 +19,29 @@ public:
     [[nodiscard]] QString currentSeriesId() const;
     [[nodiscard]] int seriesCount() const { return static_cast<int>(items_.size()); }
     void markDisplayed(const QSet<QString>& seriesIds);
+    // Centre of the "×" of the n-th study header (viewport coordinates; tests).
+    [[nodiscard]] QPoint closeButtonCenter(int studyIndex) const;
 
 Q_SIGNALS:
     void seriesActivated(const QString& seriesId);
     void seriesMprRequested(const QString& seriesId);
     void seriesInfoRequested(const QString& seriesId);
+    void studyCloseRequested(const QString& patientKey, const QString& studyKey);
 
 protected:
     QMimeData* mimeData(const QList<QTreeWidgetItem*>& items) const override;
     QStringList mimeTypes() const override;
     void contextMenuEvent(QContextMenuEvent* event) override;
+    void mouseMoveEvent(QMouseEvent* event) override;
+    void mousePressEvent(QMouseEvent* event) override;
+    void leaveEvent(QEvent* event) override;
 
 private:
+    QTreeWidgetItem* closeButtonAt(const QPoint& pos) const;
+    void setCloseHover(QTreeWidgetItem* item);
+
     std::map<QString, QTreeWidgetItem*> items_;
+    QTreeWidgetItem* closeHover_ = nullptr;
 };
 
 }  // namespace vtc

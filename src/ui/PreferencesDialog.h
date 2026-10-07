@@ -18,6 +18,8 @@ public:
 private:
     QCheckBox* darkTheme_;
     QSpinBox* fontSize_;
+    QComboBox* accent_;
+    QComboBox* language_;
     QComboBox* left_;
     QComboBox* middle_;
     QComboBox* right_;

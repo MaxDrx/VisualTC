@@ -23,6 +23,14 @@ bool AppSettings::darkTheme() const { return value("ui/darkTheme", true).toBool(
 void AppSettings::setDarkTheme(bool on) { setValue("ui/darkTheme", on); }
 int AppSettings::fontPointSize() const { return value("ui/fontPointSize", 0).toInt(); }
 void AppSettings::setFontPointSize(int pt) { setValue("ui/fontPointSize", pt); }
+QString AppSettings::accentColor() const { return value("ui/accent", QStringLiteral("blue")).toString(); }
+void AppSettings::setAccentColor(const QString& key) { setValue("ui/accent", key); }
+QString AppSettings::language() const { return value("ui/language", QString()).toString(); }
+void AppSettings::setLanguage(const QString& key) { setValue("ui/language", key); }
+bool AppSettings::hasPreviousUse() const {
+    QSettings s;
+    return !s.allKeys().isEmpty();
+}
 
 MouseAction AppSettings::leftButton() const {
     return static_cast<MouseAction>(value("mouse/left", static_cast<int>(MouseAction::ActiveTool)).toInt());
@@ -62,6 +70,8 @@ bool AppSettings::syncZoomPan() const { return value("sync/zoomPan", false).toBo
 void AppSettings::setSyncZoomPan(bool on) { setValue("sync/zoomPan", on); }
 bool AppSettings::syncWindow() const { return value("sync/window", false).toBool(); }
 void AppSettings::setSyncWindow(bool on) { setValue("sync/window", on); }
+bool AppSettings::mprCrosshairVisible() const { return value("mpr/crosshair", true).toBool(); }
+void AppSettings::setMprCrosshairVisible(bool on) { setValue("mpr/crosshair", on); }
 
 QList<WindowPreset> AppSettings::customPresets() const {
     QList<WindowPreset> out;

@@ -1,7 +1,8 @@
-# Guia do usuário — VisualTC 0.3.0
+# Guia do usuário — VisualTC 0.4.0
 
-> O VisualTC 0.3.0 não é um dispositivo médico registrado. Confira medidas e
-> reconstruções antes de qualquer uso diagnóstico.
+> O VisualTC 0.4.0 é destinado a **estudos e pesquisas** e não é um
+> dispositivo médico registrado. Confira medidas e reconstruções antes de
+> qualquer uso diagnóstico. Criado por Dr Marcelo Duarte — Brasil.
 
 ## 0. Instalar
 
@@ -75,6 +76,10 @@ volumétrica. Avisos aparecem na própria série (ex.: "cortes ausentes",
 
 - **Duplo clique** abre a série no viewport ativo.
 - **Arraste** a série para qualquer viewport.
+- **Fechar um estudo**: o **×** à direita do nome do paciente fecha só aquele
+  estudo (as imagens, o MPR e as cópias extraídas de arquivos compactados
+  dele); os demais continuam abertos. Para fechar tudo: **Arquivo › Fechar
+  estudos**.
 - **Recolher o painel** para ganhar área de imagem: botão **«** no topo do
   painel, botão **Séries** na barra de ferramentas ou **F2**. O painel vira
   uma faixa estreita na borda; clique nela (ou em **»**, ou F2) para
@@ -98,14 +103,14 @@ diferentes) aparece dividida, com o motivo no nome (ex.: "Eco 2", "Clipe 3").
 
 | Ação | Como |
 |---|---|
-| Próximo/anterior corte | roda do mouse, setas ↑ ↓ ← →, ferramenta **Navegar cortes** (S) e arrastar |
+| Próximo/anterior corte | roda do mouse, setas ↑ ↓ ← →, ferramenta **Rolar** (S) e arrastar |
 | Pular 10 % da série | Page Up / Page Down |
 | Primeiro/último | Home / End |
 | Cine | **Espaço**; velocidade, loop e sentido reverso no menu Imagem |
 | Zoom | Ctrl+roda, botão direito arrastando, ferramenta **Zoom** (Z) |
 | Pan | botão do meio, Shift+arrastar, ferramenta **Pan** (P) |
 | Ajustar à janela / 1:1 | F / Shift+F |
-| Reset da imagem | Ctrl+0 |
+| Reset da imagem | Ctrl+0 (ou **Exibir › Reset**) |
 | Próximo viewport | Tab |
 | Maximizar viewport | duplo clique (de novo para voltar) |
 | Tela cheia | F11 (ou o atalho de tela cheia do sistema) |
@@ -177,8 +182,15 @@ calibração, as medidas são mostradas em **pixels** e o aviso
 
 ## 7. Vários viewports, sincronização e linhas de referência
 
-- **Layout** (barra de ferramentas ou Ctrl+1…Ctrl+6): 1×1, 1×2, 2×1, 2×2,
-  3×2, 3×3. Cada viewport guarda a sua série e o seu estado.
+- **Layout** (barra de ferramentas ou Ctrl+1…Ctrl+7): 1×1, 1×2, 1×3, 2×1,
+  2×2, 3×2, 3×3. Cada viewport guarda a sua série e o seu estado.
+- **Plano** (botão na barra ou Ctrl+Shift+P): muda o plano da série do
+  viewport ativo — cada clique passa para o seguinte (axial → sagital →
+  coronal → axial); a seta ao lado do botão escolhe direto. O plano em que a
+  série foi adquirida mostra as **imagens originais**; os outros são
+  reconstruídos do volume da série (como no MPR, mas num único quadro). O
+  nome do botão mostra o plano atual (ex.: "Plano: Sagital"). Funciona com
+  séries marcadas como **MPR** no painel.
 - **Sincronizar séries** (Y): ao navegar uma série, as outras do mesmo
   sistema de coordenadas (Frame of Reference) vão para o corte mais próximo
   **anatomicamente** — não para o mesmo número de imagem. Séries de outro
@@ -210,17 +222,21 @@ calibração, as medidas são mostradas em **pixels** e o aviso
   | o **círculo central** | move o cruzamento (os dois planos ao mesmo tempo) |
 
   O cursor muda ao passar sobre cada parte, e um texto curto explica o que o
-  arraste fará. Com a ferramenta **Cruz** (X), um clique fora das linhas
-  leva o cruzamento até ali. As linhas também respondem com as ferramentas
-  Window/Level, Zoom, Pan e Navegar cortes; com as ferramentas de medida, os
-  cliques ficam para as medidas.
+  arraste fará. Um clique fora das linhas leva o cruzamento até ali
+  (ferramenta **Posicionar o cruzamento**, Shift+X, a padrão no MPR). As
+  linhas também respondem com as ferramentas Window/Level, Zoom, Pan e
+  Rolar; com as ferramentas de medida, os cliques ficam para as medidas.
+- **Cruz** (botão na barra ou **X**): mostra ou oculta as linhas coloridas,
+  para ver a imagem limpa. A escolha é lembrada.
 - A roda do mouse percorre cada plano de forma independente.
 - **Espessura e projeção**: cada plano tem a sua espessura (pela barrinha) e
   os três usam a mesma projeção — **MIP** (intensidade máxima), **MinIP**
-  (mínima) ou **Média**, no menu MPR. Escolher MIP ou MinIP com os planos
-  finos já aplica 10 mm. **MPR › Espessura dos três planos** aplica a mesma
-  espessura a todos (1–50 mm ou personalizada até 500 mm). O valor aparece no
-  canto de cada plano.
+  (mínima) ou **Média**, no menu MPR (ou na seta ao lado do botão **MPR**).
+  Escolher MIP ou MinIP com os planos finos já aplica 10 mm. A seção
+  **Espessura dos três planos** do mesmo menu aplica a mesma espessura a
+  todos (plano fino, 1–50 mm ou personalizada até 500 mm). Escolhida com o
+  MPR fechado, a opção abre o MPR da série ativa já com ela. O valor aparece
+  no canto de cada plano.
 - **Planos oblíquos pelo teclado**: Ctrl+[ e Ctrl+] giram os outros dois
   planos em 5° em torno do plano ativo; **MPR › Restaurar planos ortogonais**
   desfaz qualquer rotação. Ao girar, os planos mantêm a escala da imagem.
@@ -228,43 +244,53 @@ calibração, as medidas são mostradas em **pixels** e o aviso
   dos cortes; regiões de cortes ausentes ficam pretas (nunca interpoladas).
 - Clique em **MPR** novamente para voltar à visualização 2D.
 
-## 9. Exportar e capturar
+## 9. Exportar e copiar
 
 - **Exportar imagem** (Ctrl+E): PNG, JPEG ou TIFF do viewport ativo, com
   opções de incluir medidas/textos e de **ocultar a identificação do
   paciente**.
-- **Capturar viewport** (Ctrl+Shift+C): copia a imagem para a área de
-  transferência.
+- **Arquivo › Copiar imagem do viewport** (Ctrl+Shift+C): copia a imagem
+  para a área de transferência.
 - **Informações DICOM** (Ctrl+I): principais atributos da imagem atual.
 
 ## 10. Preferências
 
 | Aba | Opções |
 |---|---|
-| Interface | tema escuro/claro, tamanho da fonte |
+| Interface | **idioma** (português, espanhol ou inglês; vale ao reiniciar — o VisualTC oferece reiniciar na hora), **cor de destaque**, tema escuro/claro, tamanho da fonte |
 | Mouse | ação dos botões esquerdo, do meio e direito |
 | Desempenho | tamanho do cache, pré-carregamento da série, threads, interpolação, decodificação isolada, qualidade do MPR |
 | DICOM | textos sobre a imagem, linhas de referência, sincronização de zoom/pan e janela, presets personalizados |
+
+**Cor de destaque**: a cor dos botões ativos da barra, da seleção e do nome
+do paciente — azul, sépia, amarelo, dourado, verde neon ou laranja. Também
+em **Exibir › Cor de destaque**; muda na hora.
+
+**Idioma**: na primeira vez, o VisualTC usa o idioma do sistema (português,
+espanhol ou, para os demais, inglês); quem já usava uma versão anterior
+continua em português. Os números seguem o idioma (vírgula decimal em
+português e espanhol).
 
 ## 11. Atalhos
 
 | Tecla | Função | Tecla | Função |
 |---|---|---|---|
 | Ctrl+O | Abrir arquivos | Ctrl+Shift+O | Abrir pasta |
-| F2 | Recolher/mostrar o painel de séries | Ctrl+1…6 | Layouts |
+| F2 | Recolher/mostrar o painel de séries | Ctrl+1…7 | Layouts |
 | W | Window/Level | P | Pan |
-| Z | Zoom | S | Navegar cortes |
+| Z | Zoom | S | Rolar cortes |
 | M | Régua | A | Ângulo |
 | C | Cobb | R | ROI retangular |
 | E | ROI elíptica | L | ROI livre |
-| V | Valor do pixel | X | Cruz do MPR |
+| V | Valor do pixel | X | Cruz: mostrar/ocultar as linhas do MPR |
 | I | Inverter | F / Shift+F | Ajustar / 1:1 |
 | ] / [ | Girar 90° | H / Shift+H | Espelhar |
 | Espaço | Cine | O | Textos sobre a imagem |
 | Y | Sincronizar | Ctrl+L | Linhas de referência |
 | Ctrl+M | MPR | Ctrl+[ / Ctrl+] | MPR oblíquo ±5° |
+| Ctrl+Shift+P | Plano: axial → sagital → coronal | Shift+X | Posicionar o cruzamento (MPR) |
 | 1–8 | Presets de TC | Ctrl+0 | Reset |
-| Ctrl+E | Exportar | Ctrl+Shift+C | Capturar |
+| Ctrl+E | Exportar | Ctrl+Shift+C | Copiar imagem |
 | Ctrl+Shift+H | Histograma da ROI | Ctrl+I | Informações DICOM |
 | Ctrl+Z | Desfazer | Delete | Apagar medida |
 | Esc | Cancelar / ferramenta padrão | Tab | Próximo viewport |

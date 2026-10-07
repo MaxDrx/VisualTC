@@ -42,6 +42,8 @@ public:
     // the number of new instances.
     std::size_t addInstances(const std::vector<InstancePtr>& instances);
     void clear();
+    // Removes one study (Patient::key, Study::key) and returns its instances.
+    std::vector<InstancePtr> removeStudy(const std::string& patientKey, const std::string& studyKey);
 
     [[nodiscard]] const std::vector<PatientPtr>& patients() const { return patients_; }
     [[nodiscard]] SeriesPtr findSeries(const std::string& id) const;

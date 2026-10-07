@@ -140,6 +140,19 @@ interrompido) são apagadas na próxima abertura.
   extensão do plano reto, para a escala não mudar enquanto ele gira.
 - Tabelas de cores (`imaging/ColorMap`): 256 entradas aplicadas depois do
   window/level, por uma imagem indexada de 8 bits (só exibição).
+- Plano da série (botão Plano): o plano adquirido é a própria pilha
+  (`StackSource`); os outros são um `MprSource` de uma `MprSession` só
+  daquele viewport (sem cruz). O volume montado fica em cache e serve tanto
+  ao MPR quanto ao Plano (um volume por vez na memória).
+- Idiomas (`app/I18n`): o código-fonte é escrito em português; um
+  `QTranslator` próprio lê `resources/i18n/<es|en>.json` (texto-fonte →
+  tradução, `singular||plural` para `%n`). As mensagens do núcleo, que não
+  usa Qt, são traduzidas na exibição por `trCore()`: busca exata e, para
+  textos com partes variáveis, modelos com `%1`… (as partes conhecidas são
+  traduzidas também). O idioma vale para a execução inteira (trocar pede
+  reinício) e define o formato dos números (`QLocale::setDefault`).
+- Cor de destaque (`Theme::apply(app, escuro, Accent)`): folha de estilo e
+  paleta regeradas na hora; ícones dos botões marcados são redesenhados.
 - Sincronização: só entre imagens com o mesmo Frame of Reference UID não
   vazio e planos paralelos; escolhe o corte cuja posição projetada na
   normal é a mais próxima (não o mesmo índice). Reference lines: interseção

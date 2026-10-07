@@ -3,13 +3,18 @@
 #include <QMainWindow>
 #include <QStringList>
 #include <atomic>
+#include <functional>
 #include <map>
 #include <memory>
+#include <optional>
 #include <thread>
 
 #include "dicom/DicomScanner.h"
 #include "dicom/DicomStudy.h"
+#include "app/Theme.h"
 #include "imaging/WindowLevel.h"
+#include "mpr/ImageVolume.h"
+#include "mpr/MprGeometry.h"
 #include "viewer2d/Viewport.h"
 
 class QAction;
@@ -75,6 +80,7 @@ private:
     void openFolder();
     void openArchive();
     void closeStudies();
+    void closeStudy(const QString& patientKey, const QString& studyKey);
     void onImportProgress(int processed, int total, int found, const QString& archive);
     void onImportFinished();
     void showImportIssues();
@@ -83,6 +89,18 @@ private:
     void showReferenceLinesContext();
     void startMpr(const QString& seriesId = QString());
     void toggleMpr(bool on);
+    bool checkVolumetric(const SeriesPtr& series, const QString& purpose);
+    // Builds (or reuses) the volume of a series in the background; `done`
+    // runs on the GUI thread with the volume or an error (empty if cancelled).
+    void buildVolume(const SeriesPtr& series, std::function<void(const VolumePtr&, const QString&)> done);
+    static MprOrientation nativeOrientation(const SeriesPtr& series);
+    SeriesPtr seriesIn(Viewport* vp, std::optional<MprOrientation>* plane) const;
+    void showPlane(MprOrientation o);
+    void cyclePlane();
+    void createMprActions();
+    void populateMprMenu(QMenu* m);
+    void setAccent(Accent a);
+    void restartApplication();
     void setTool(Tool tool);
     void applyPreset(const WindowPreset& preset);
     void rebuildPresetMenu();
@@ -153,18 +171,37 @@ private:
     QMenu* roiMenu_ = nullptr;
     QMenu* lutMenu_ = nullptr;
     QActionGroup* lutGroup_ = nullptr;
-    QMenu* slabMenu_ = nullptr;
     QMenu* mprMenu_ = nullptr;
+    QMenu* mprToolbarMenu_ = nullptr;
+    QAction* actSlabCustom_ = nullptr;
+    QAction* actTurnLeft_ = nullptr;
+    QAction* actTurnRight_ = nullptr;
+    QAction* actResetPlanes_ = nullptr;
+    QAction* actCrosshairLines_ = nullptr;
+    QAction* actPlane_ = nullptr;
+    QActionGroup* planeGroup_ = nullptr;
+    std::map<int, QAction*> planeActions_;
+    QToolButton* planeBtn_ = nullptr;
+    QActionGroup* accentGroup_ = nullptr;
+    std::optional<std::pair<double, int>> pendingSlab_;  // MIP/thickness chosen before the MPR opened
+    struct {
+        std::string seriesId;
+        VolumePtr volume;
+    } volumeCache_;
+    std::shared_ptr<MprSession> reformatSession_;  // the plane button's reconstruction
     QActionGroup* slabGroup_ = nullptr;
     std::vector<QAction*> slabModeActions_;
     QToolBar* toolbar_ = nullptr;
     std::vector<QToolButton*> compactOrder_;  // first loses its text first
     bool fittingToolbar_ = false;
+    QTimer* fitTimer_ = nullptr;
+    QString lastFitSignature_;
 
     // MPR volume construction
     std::thread mprThread_;
     std::atomic<bool> mprCancel_{false};
     bool mprBuilding_ = false;
+    std::string buildingSeriesId_;
 
     // Import bookkeeping: problems of every import of this session, and a
     // flag to drop the result of an import interrupted by "Fechar estudos".

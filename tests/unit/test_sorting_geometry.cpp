@@ -309,6 +309,43 @@ TEST_CASE("Database groups patients, studies and series and drops duplicates", "
     REQUIRE(db.studyOf(s->id) != nullptr);
 }
 
+TEST_CASE("One study can be closed while the others stay open", "[db]") {
+    StudyDatabase db;
+    std::vector<InstancePtr> insts;
+    for (int i = 0; i < 4; ++i) {
+        insts.push_back(makeInstance({{0, 0, i * 1.0}, {1, 0, 0}, {0, 1, 0}, i + 1, std::nullopt, 64, 64, true, 1,
+                                      "1.2.3.4"},
+                                     i));
+    }
+    for (int i = 0; i < 3; ++i) {
+        auto other = makeInstance({{0, 0, i * 1.0}, {1, 0, 0}, {0, 1, 0}, i + 1, std::nullopt, 64, 64, true, 1,
+                                   "7.7.7.1"},
+                                  200 + i);
+        other->studyInstanceUid = "7.7.7";  // second exam of the same patient
+        insts.push_back(other);
+    }
+    REQUIRE(db.addInstances(insts) == 7);
+    REQUIRE(db.patients().size() == 1);
+    REQUIRE(db.patients()[0]->studies.size() == 2);
+    const std::string patientKey = db.patients()[0]->key;
+
+    REQUIRE(db.removeStudy(patientKey, "nao-existe").empty());
+    const auto removed = db.removeStudy(patientKey, "7.7.7");
+    REQUIRE(removed.size() == 3);
+    REQUIRE(db.patients()[0]->studies.size() == 1);
+    REQUIRE(db.findSeries("7.7.7.1") == nullptr);
+    REQUIRE(db.findSeries("1.2.3.4") != nullptr);
+    REQUIRE(db.instanceCount() == 4);
+    // Closed, it can be opened again (not taken for a duplicate).
+    REQUIRE(db.addInstances(removed) == 3);
+    REQUIRE(db.patients()[0]->studies.size() == 2);
+    // The last study closed leaves an empty list.
+    db.removeStudy(patientKey, "7.7.7");
+    db.removeStudy(patientKey, "1.2.3");
+    REQUIRE(db.patients().empty());
+    REQUIRE(db.allSeries().empty());
+}
+
 TEST_CASE("Segment-plane intersection", "[geometry]") {
     Vec3 out;
     REQUIRE(intersectSegmentWithPlane({0, 0, -1}, {0, 0, 1}, {0, 0, 0.5}, {0, 0, 1}, out));

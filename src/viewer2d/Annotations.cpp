@@ -1,5 +1,6 @@
 #include "viewer2d/Annotations.h"
 
+#include <QCoreApplication>
 #include <QFontMetricsF>
 #include <QLocale>
 #include <QPainter>
@@ -174,22 +175,25 @@ QStringList Annotation::labelLines(const MeasureContext& ctx) const {
                 s = polygonStats(*ctx.frame, points, sx, sy);
             }
             if (cal) {
-                lines << (s.areaMm2 >= 100.0 ? "Área: " + num(s.areaMm2 / 100.0, 2) + " cm²"
-                                             : "Área: " + num(s.areaMm2, 1) + " mm²");
+                lines << (s.areaMm2 >= 100.0
+                              ? QCoreApplication::translate("Annotation", "Área: %1 cm²").arg(num(s.areaMm2 / 100.0, 2))
+                              : QCoreApplication::translate("Annotation", "Área: %1 mm²").arg(num(s.areaMm2, 1)));
             } else {
-                lines << "Área: " + num(s.areaMm2, 0) + " px²";
+                lines << QCoreApplication::translate("Annotation", "Área: %1 px²").arg(num(s.areaMm2, 0));
             }
             if (kind_ != AnnotationKind::Freehand) {
                 lines << formatLength(s.widthMm, cal, ctx.spacing) + " × " +
                              formatLength(s.heightMm, cal, ctx.spacing);
             } else {
-                lines << "Perímetro: " + formatLength(s.perimeterMm, cal, ctx.spacing);
+                lines << QCoreApplication::translate("Annotation", "Perímetro: %1")
+                             .arg(formatLength(s.perimeterMm, cal, ctx.spacing));
             }
             if (s.count > 0) {
                 const QString u = ctx.unit.isEmpty() ? QString() : " " + ctx.unit;
-                lines << "Média: " + num(s.mean, 1) + u + "   DP: " + num(s.stdDev, 1);
-                lines << "Mín: " + num(s.min, 0) + "   Máx: " + num(s.max, 0) + "   n=" +
-                             QLocale().toString(static_cast<qulonglong>(s.count));
+                lines << QCoreApplication::translate("Annotation", "Média: %1   DP: %2")
+                             .arg(num(s.mean, 1) + u, num(s.stdDev, 1));
+                lines << QCoreApplication::translate("Annotation", "Mín: %1   Máx: %2   n=%3")
+                             .arg(num(s.min, 0), num(s.max, 0), QLocale().toString(static_cast<qulonglong>(s.count)));
             }
             break;
         }

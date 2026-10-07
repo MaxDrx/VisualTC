@@ -52,6 +52,10 @@ public:
     void enterMpr(const std::shared_ptr<MprSession>& session);
     void exitMpr();
     [[nodiscard]] const std::shared_ptr<MprSession>& mprSession() const { return mpr_; }
+    // Crosshair lines of the MPR ("Cruz" button): hidden lines are neither
+    // drawn nor draggable.
+    void setMprGuidesVisible(bool on);
+    [[nodiscard]] bool mprGuidesVisible() const { return guidesVisible_; }
 
 Q_SIGNALS:
     void activeViewportChanged(Viewport* vp);
@@ -85,6 +89,7 @@ private:
     bool sync_ = false;
     bool refLines_ = true;
     int refLineCount_ = 0;
+    bool guidesVisible_ = true;
     bool busy_ = false;  // re-entrancy guard for synchronization
     std::map<std::string, ViewState> savedStates_;
 

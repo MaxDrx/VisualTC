@@ -61,3 +61,11 @@ endif()
 # Core performance probe (decode, window/level, MPR) on any folder.
 add_executable(vtc_bench ${CMAKE_SOURCE_DIR}/tools/vtc_bench.cpp)
 target_link_libraries(vtc_bench PRIVATE VisualTC::core)
+
+# Every text of the interface has its Spanish and English translation
+# (resources/i18n/*.json), with the same %1/%n placeholders.
+find_package(Python3 COMPONENTS Interpreter QUIET)
+if(Python3_Interpreter_FOUND)
+    add_test(NAME translations_complete
+             COMMAND Python3::Interpreter ${CMAKE_SOURCE_DIR}/tools/i18n.py check)
+endif()

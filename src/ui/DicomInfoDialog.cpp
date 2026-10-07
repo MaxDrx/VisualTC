@@ -6,6 +6,7 @@
 #include <QTreeWidget>
 #include <QVBoxLayout>
 
+#include "app/I18n.h"
 #include "dicom/DicomParser.h"
 #include "dicom/TextUtil.h"
 
@@ -21,15 +22,16 @@ QString vec(const Vec3& v) {
     const QLocale l;
     return l.toString(v.x, 'f', 4) + " \\ " + l.toString(v.y, 'f', 4) + " \\ " + l.toString(v.z, 'f', 4);
 }
-const char* spacingName(SpacingSource src) {
+QString spacingName(SpacingSource src) {
     switch (src) {
-        case SpacingSource::None: return "ausente (medidas em pixels)";
-        case SpacingSource::PixelSpacing: return "Pixel Spacing (0028,0030)";
-        case SpacingSource::ImagerPixelSpacing: return "Imager Pixel Spacing (0018,1164) — plano do detector";
-        case SpacingSource::EnhancedPixelMeasures: return "Pixel Measures (Enhanced)";
-        case SpacingSource::UltrasoundRegion: return "Região de ultrassom calibrada";
+        case SpacingSource::None: return QObject::tr("ausente (medidas em pixels)");
+        case SpacingSource::PixelSpacing: return QStringLiteral("Pixel Spacing (0028,0030)");
+        case SpacingSource::ImagerPixelSpacing:
+            return QStringLiteral("Imager Pixel Spacing (0018,1164) — ") + QObject::tr("plano do detector");
+        case SpacingSource::EnhancedPixelMeasures: return QStringLiteral("Pixel Measures (Enhanced)");
+        case SpacingSource::UltrasoundRegion: return QObject::tr("Região de ultrassom calibrada");
     }
-    return "";
+    return {};
 }
 }  // namespace
 
@@ -101,7 +103,7 @@ DicomInfoDialog::DicomInfoDialog(const SeriesPtr& series, int frameIndex, QWidge
         }
     }
     for (auto issue : g.issues) {
-        add(gg, tr("Aviso"), QString::fromStdString(describe(issue)));
+        add(gg, tr("Aviso"), trCore(describe(issue)));
     }
 
     auto* gi = group(tr("Imagem %1").arg(frameIndex + 1));
@@ -125,7 +127,7 @@ DicomInfoDialog::DicomInfoDialog(const SeriesPtr& series, int frameIndex, QWidge
     add(gi, tr("Espaçamento de pixel (linhas \\ colunas)"),
         fi.geometry.hasSpacing() ? d(fi.geometry.spacingY, 4) + " \\ " + d(fi.geometry.spacingX, 4) + " mm"
                                  : QStringLiteral("N/A"));
-    add(gi, tr("Origem da calibração"), tr(spacingName(fi.geometry.spacingSource)));
+    add(gi, tr("Origem da calibração"), spacingName(fi.geometry.spacingSource));
     add(gi, "Slice Thickness", d(fi.geometry.sliceThickness) + " mm");
     add(gi, "Spacing Between Slices", d(inst.spacingBetweenSlices) + " mm");
     QStringList windows;

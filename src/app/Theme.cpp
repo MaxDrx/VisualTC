@@ -1,14 +1,23 @@
 #include "app/Theme.h"
 
 #include <QApplication>
+#include <QObject>
 #include <QPalette>
 #include <QStyleFactory>
+#include <cmath>
 
 namespace vtc {
 
 namespace {
 ThemeColors g_colors;
 bool g_dark = true;
+Accent g_accent = Accent::Blue;
+
+// Mix of two colours (t = share of b).
+QColor mix(const QColor& a, const QColor& b, double t) {
+    auto ch = [t](int x, int y) { return static_cast<int>(std::lround(x * (1.0 - t) + y * t)); };
+    return {ch(a.red(), b.red()), ch(a.green(), b.green()), ch(a.blue(), b.blue())};
+}
 
 ThemeColors darkColors() {
     ThemeColors c;
@@ -43,10 +52,64 @@ ThemeColors lightColors() {
 
 const ThemeColors& Theme::colors() { return g_colors; }
 bool Theme::isDark() { return g_dark; }
+Accent Theme::accent() { return g_accent; }
 
-void Theme::apply(QApplication& app, bool dark) {
+QString Theme::accentName(Accent a) {
+    switch (a) {
+        case Accent::Blue: return QObject::tr("Azul");
+        case Accent::Sepia: return QObject::tr("Sépia");
+        case Accent::Yellow: return QObject::tr("Amarelo");
+        case Accent::Gold: return QObject::tr("Dourado");
+        case Accent::NeonGreen: return QObject::tr("Verde neon");
+        case Accent::Orange: return QObject::tr("Laranja");
+    }
+    return {};
+}
+
+QString Theme::accentKey(Accent a) {
+    switch (a) {
+        case Accent::Blue: return QStringLiteral("blue");
+        case Accent::Sepia: return QStringLiteral("sepia");
+        case Accent::Yellow: return QStringLiteral("yellow");
+        case Accent::Gold: return QStringLiteral("gold");
+        case Accent::NeonGreen: return QStringLiteral("neon");
+        case Accent::Orange: return QStringLiteral("orange");
+    }
+    return QStringLiteral("blue");
+}
+
+Accent Theme::accentFromKey(const QString& key) {
+    for (Accent a : kAccents) {
+        if (accentKey(a) == key) {
+            return a;
+        }
+    }
+    return Accent::Blue;
+}
+
+QColor Theme::accentColor(Accent a, bool dark) {
+    // Bright tones for the dark theme; deeper ones keep the contrast on the
+    // light theme.
+    switch (a) {
+        case Accent::Blue: return dark ? QColor("#2EB4D6") : QColor("#137F9C");
+        case Accent::Sepia: return dark ? QColor("#C49A6C") : QColor("#8A5A34");
+        case Accent::Yellow: return dark ? QColor("#F2D33A") : QColor("#9C7F00");
+        case Accent::Gold: return dark ? QColor("#D4AF37") : QColor("#9A7A16");
+        case Accent::NeonGreen: return dark ? QColor("#39FF14") : QColor("#1E9E0A");
+        case Accent::Orange: return dark ? QColor("#FF8C1A") : QColor("#C25A00");
+    }
+    return QColor("#2EB4D6");
+}
+
+void Theme::apply(QApplication& app, bool dark, Accent accent) {
     g_dark = dark;
+    g_accent = accent;
     g_colors = dark ? darkColors() : lightColors();
+    g_colors.accent = accentColor(accent, dark);
+    // Dim variant: background of checked buttons and selections, dark enough
+    // (or light enough) for the normal text colour on top of it.
+    g_colors.accentDim = dark ? mix(g_colors.background, g_colors.accent, 0.40)
+                              : mix(QColor(Qt::white), g_colors.accent, 0.28);
     const ThemeColors& c = g_colors;
     app.setStyle(QStyleFactory::create("Fusion"));
 
@@ -89,6 +152,7 @@ void Theme::apply(QApplication& app, bool dark) {
                                                subcontrol-origin: padding; subcontrol-position: center right; right: 3px; }
         QToolBar QToolButton:hover { background: %4; }
         QToolBar QToolButton:checked { background: %8; border-color: %7; }
+        QToolBar QToolButton:checked:disabled { background: transparent; border-color: transparent; }
         QToolBar QToolButton:pressed { background: %8; }
         QToolBar::separator { background: %4; width: 1px; margin: 4px 6px; }
         QDockWidget { color: %5; titlebar-close-icon: none; }

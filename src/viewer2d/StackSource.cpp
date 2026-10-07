@@ -2,6 +2,7 @@
 
 #include <algorithm>
 
+#include "app/I18n.h"
 #include "io/FrameProvider.h"
 
 namespace vtc {
@@ -37,7 +38,7 @@ QString StackSource::errorAt(int index) const {
     if (count() == 0) {
         return {};
     }
-    return provider_->errorFor(ref(index).instance->filePath);
+    return trCore(provider_->errorFor(ref(index).instance->filePath));
 }
 
 FrameGeometry StackSource::geometryAt(int index) const { return ref(index).geometry(); }
@@ -62,7 +63,7 @@ QString StackSource::seriesLabel() const {
     if (auto n = series_->number()) {
         label = QString::number(*n) + " · ";
     }
-    return label + QString::fromStdString(series_->description());
+    return label + seriesDescription(*series_);
 }
 
 std::string StackSource::annotationKey(int index) const { return ref(index).key(); }

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QColor>
+#include <QString>
 
 class QApplication;
 
@@ -21,9 +22,21 @@ struct ThemeColors {
     QColor icon;
 };
 
+// Highlight colour chosen by the user (Preferências › Interface): checked
+// toolbar buttons, selection, patient name in the series panel, active
+// viewport frame.
+enum class Accent { Blue = 0, Sepia, Yellow, Gold, NeonGreen, Orange };
+inline constexpr Accent kAccents[] = {Accent::Blue, Accent::Sepia,     Accent::Yellow,
+                                      Accent::Gold, Accent::NeonGreen, Accent::Orange};
+
 class Theme {
 public:
-    static void apply(QApplication& app, bool dark);
+    static void apply(QApplication& app, bool dark, Accent accent = Accent::Blue);
+    static QString accentName(Accent a);          // shown to the user (translated)
+    static QString accentKey(Accent a);           // stored in the settings
+    static Accent accentFromKey(const QString& key);
+    static QColor accentColor(Accent a, bool dark);
+    static Accent accent();
     static const ThemeColors& colors();
     static bool isDark();
 

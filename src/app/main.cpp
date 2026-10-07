@@ -2,13 +2,11 @@
 #include <QApplication>
 #include <QCommandLineParser>
 #include <QDir>
-#include <QLibraryInfo>
-#include <QLocale>
-#include <QTranslator>
 #include <QStandardPaths>
 #include <QTimer>
 
 #include "app/AppSettings.h"
+#include "app/I18n.h"
 #include "app/Theme.h"
 #include "core/Logger.h"
 #include "core/PathUtil.h"
@@ -41,16 +39,6 @@ int main(int argc, char* argv[]) {
     QApplication::setApplicationName(QStringLiteral("VisualTC"));
     QApplication::setApplicationDisplayName(QStringLiteral("VisualTC"));
     QApplication::setApplicationVersion(QStringLiteral(VISUALTC_VERSION));
-    QLocale::setDefault(QLocale(QLocale::Portuguese, QLocale::Brazil));
-    // Standard Qt dialogs/buttons in Portuguese when the Qt translations are
-    // deployed (qtbase_pt_BR.qm); silently falls back to English otherwise.
-    QTranslator qtTranslator;
-    if (qtTranslator.load(QLocale(), QStringLiteral("qtbase"), QStringLiteral("_"),
-                          QLibraryInfo::path(QLibraryInfo::TranslationsPath)) ||
-        qtTranslator.load(QLocale(), QStringLiteral("qtbase"), QStringLiteral("_"),
-                          QCoreApplication::applicationDirPath() + QStringLiteral("/translations"))) {
-        QApplication::installTranslator(&qtTranslator);
-    }
 
     QCommandLineParser parser;
     parser.setApplicationDescription(QStringLiteral("VisualTC — DICOM Medical Image Viewer"));
@@ -76,8 +64,14 @@ int main(int argc, char* argv[]) {
                                     QStringLiteral("nome"));
     const QCommandLineOption size(QStringLiteral("size"), QStringLiteral("Tamanho da janela, ex.: 1600x1000."),
                                   QStringLiteral("LxA"));
-    parser.addOptions({debugOpt, noIsolation, screenshot, layout, mpr, sync, demo, slab, preset, size});
+    const QCommandLineOption language(QStringLiteral("language"),
+                                      QStringLiteral("Idioma só desta execução: pt, es ou en (testes)."),
+                                      QStringLiteral("pt|es|en"));
+    parser.addOptions({debugOpt, noIsolation, screenshot, layout, mpr, sync, demo, slab, preset, size, language});
     parser.process(app);
+    // Interface language (Preferências › Interface), before any window.
+    vtc::installLanguage(app, parser.isSet(language) ? vtc::languageFromKey(parser.value(language))
+                                                     : vtc::startupLanguage());
 
     // Local log, without patient data (see docs/ARCHITECTURE.md).
     const QString logDir = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation) + "/logs";
@@ -90,7 +84,7 @@ int main(int argc, char* argv[]) {
 
     vtc::initializeDicomLibrary();
     auto& settings = vtc::AppSettings::instance();
-    vtc::Theme::apply(app, settings.darkTheme());
+    vtc::Theme::apply(app, settings.darkTheme(), vtc::Theme::accentFromKey(settings.accentColor()));
     if (settings.fontPointSize() > 0) {
         QFont f = QApplication::font();
         f.setPointSize(settings.fontPointSize());

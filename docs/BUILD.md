@@ -87,6 +87,12 @@ build/linux-release/tests/visualtc_tests --list-tags
   laço de decodificação, multiframe maior que o cache, ZIP com senha (AES),
   limpeza da pasta temporária e, na janela principal, atalhos sem
   duplicidade, preset de TC pela tecla 1 e o painel de séries recolhível.
+- `translations_complete` (`tools/i18n.py check`, precisa de Python 3):
+  todo texto da interface — `tr()`, `QObject::tr()`,
+  `QCoreApplication::translate()` e as mensagens do núcleo listadas em
+  `resources/i18n/core_messages.txt` — tem tradução em `es.json` e
+  `en.json`, com os mesmos `%1`/`%n`. Ao criar ou mudar um texto, rode
+  `tools/i18n.py missing es` (e `en`) e acrescente a tradução.
 - O teste `DS parsing does not depend on the process locale` precisa de uma
   localidade com vírgula decimal instalada (`sudo locale-gen pt_BR.UTF-8` no
   Ubuntu); sem ela, é marcado como ignorado.
@@ -101,7 +107,8 @@ build/linux-release/tests/visualtc_tests --list-tags
 - Exame sintético para testes manuais: `build/<preset>/tests/make_phantom <pasta> [--small]`.
 
 O executável também tem opções de automação usadas no CI:
-`VisualTC --size 1600x1000 --layout 2x2 --sync --mpr --slab 20 --preset Pulmão --screenshot saida.png <pasta>`.
+`VisualTC --size 1600x1000 --layout 2x2 --sync --mpr --slab 20 --preset Pulmão --screenshot saida.png <pasta>`;
+`--language es` (ou `en`, `pt`) muda o idioma só daquela execução.
 
 ## 5. Integração contínua
 
@@ -127,10 +134,10 @@ os pacotes passam a exigir Ubuntu 24.04 / Debian 13) e oferece a imagem Intel
    e o app do macOS leem a versão daí) e `version` em `vcpkg.json`.
 2. Crie a versão de um destes jeitos (o job confere que a tag e o
    `VERSION` do CMakeLists.txt coincidem):
-   - no site do GitHub: *Releases › Draft a new release*, tag nova `v0.3.0`,
+   - no site do GitHub: *Releases › Draft a new release*, tag nova `v0.4.0`,
      *Publish release* — os instaladores são anexados quando o workflow
      termina (a primeira compilação leva cerca de uma hora);
-   - ou pelo terminal: `git tag v0.3.0 && git push origin v0.3.0`.
+   - ou pelo terminal: `git tag v0.4.0 && git push origin v0.4.0`.
 3. O job **release** publica a versão no GitHub com nomes fixos:
    `VisualTC-Setup-x64.exe`, `VisualTC-macOS.dmg`, `visualtc_amd64.deb`,
    `VisualTC-x86_64.AppImage` e `SHA256SUMS.txt`, com as instruções de

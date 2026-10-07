@@ -8,14 +8,19 @@
 #include <QFormLayout>
 #include <QHBoxLayout>
 #include <QHeaderView>
+#include <QIcon>
 #include <QLabel>
+#include <QPixmap>
 #include <QPushButton>
 #include <QSpinBox>
 #include <QTabWidget>
 #include <QTableWidget>
 #include <QVBoxLayout>
+#include <algorithm>
 
 #include "app/AppSettings.h"
+#include "app/I18n.h"
+#include "app/Theme.h"
 #include "core/SystemInfo.h"
 
 namespace vtc {
@@ -27,7 +32,7 @@ QComboBox* mouseCombo(QWidget* parent, MouseAction current) {
     c->addItem(QObject::tr("Window/Level"), static_cast<int>(MouseAction::WindowLevel));
     c->addItem(QObject::tr("Pan"), static_cast<int>(MouseAction::Pan));
     c->addItem(QObject::tr("Zoom"), static_cast<int>(MouseAction::Zoom));
-    c->addItem(QObject::tr("Navegar cortes"), static_cast<int>(MouseAction::Scroll));
+    c->addItem(QObject::tr("Rolar cortes"), static_cast<int>(MouseAction::Scroll));
     c->setCurrentIndex(c->findData(static_cast<int>(current)));
     return c;
 }
@@ -50,9 +55,25 @@ PreferencesDialog::PreferencesDialog(QWidget* parent) : QDialog(parent) {
     fontSize_->setRange(0, 20);
     fontSize_->setSpecialValueText(tr("Padrão do sistema"));
     fontSize_->setValue(s.fontPointSize());
+    accent_ = new QComboBox;
+    for (Accent a : kAccents) {
+        QPixmap swatch(16, 16);
+        swatch.fill(Theme::accentColor(a, true));
+        accent_->addItem(QIcon(swatch), Theme::accentName(a), Theme::accentKey(a));
+    }
+    accent_->setCurrentIndex(std::max(0, accent_->findData(s.accentColor())));
+    accent_->setToolTip(tr("Cor dos botões ativos da barra, da seleção e do nome do paciente."));
+    language_ = new QComboBox;
+    for (Language l : kLanguages) {
+        language_->addItem(languageNativeName(l), languageKey(l));
+    }
+    language_->setCurrentIndex(std::max(0, language_->findData(languageKey(currentLanguage()))));
+    uiForm->addRow(tr("Idioma / Language:"), language_);
+    uiForm->addRow(tr("Cor de destaque:"), accent_);
     uiForm->addRow(darkTheme_);
     uiForm->addRow(tr("Tamanho da fonte:"), fontSize_);
-    uiForm->addRow(new QLabel(tr("<i>Tema e fonte são aplicados ao reiniciar o VisualTC.</i>")));
+    uiForm->addRow(new QLabel(tr("<i>Idioma, tema e fonte são aplicados ao reiniciar o VisualTC; a cor de destaque, "
+                                 "na hora.</i>")));
     tabs->addTab(ui, tr("Interface"));
 
     // Mouse
@@ -64,7 +85,7 @@ PreferencesDialog::PreferencesDialog(QWidget* parent) : QDialog(parent) {
     mouseForm->addRow(tr("Botão esquerdo:"), left_);
     mouseForm->addRow(tr("Botão do meio:"), middle_);
     mouseForm->addRow(tr("Botão direito:"), right_);
-    mouseForm->addRow(new QLabel(tr("Roda: navegar cortes · Ctrl+roda: zoom · Shift+arrastar: pan · "
+    mouseForm->addRow(new QLabel(tr("Roda: rolar cortes · Ctrl+roda: zoom · Shift+arrastar: pan · "
                                     "Ctrl+arrastar: zoom")));
     tabs->addTab(mouse, tr("Mouse"));
 
@@ -172,6 +193,8 @@ void PreferencesDialog::accept() {
     auto& s = AppSettings::instance();
     s.setDarkTheme(darkTheme_->isChecked());
     s.setFontPointSize(fontSize_->value());
+    s.setAccentColor(accent_->currentData().toString());
+    s.setLanguage(language_->currentData().toString());
     s.setButtons(static_cast<MouseAction>(left_->currentData().toInt()),
                  static_cast<MouseAction>(middle_->currentData().toInt()),
                  static_cast<MouseAction>(right_->currentData().toInt()));

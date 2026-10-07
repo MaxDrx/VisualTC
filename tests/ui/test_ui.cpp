@@ -1,10 +1,13 @@
 // Integration tests of the Qt layer, run headless (QT_QPA_PLATFORM=offscreen).
 #include <QAction>
 #include <QApplication>
+#include <QComboBox>
 #include <QDialog>
 #include <QDir>
 #include <QFileOpenEvent>
 #include <QLabel>
+#include <QMenuBar>
+#include <QToolBar>
 #include <QMenu>
 #include <QSignalSpy>
 #include <QStandardPaths>
@@ -17,6 +20,8 @@
 #include <numbers>
 
 #include "app/AppSettings.h"
+#include "app/I18n.h"
+#include "app/Theme.h"
 #include "core/PathUtil.h"
 #include "dicom/DicomParser.h"
 #include "dicom/DicomStudy.h"
@@ -26,6 +31,7 @@
 #include "io/ExtractionArea.h"
 #include "io/ImportTask.h"
 #include "ui/MainWindow.h"
+#include "ui/PreferencesDialog.h"
 #include "ui/SeriesBrowser.h"
 #include "ui/SeriesDock.h"
 #include "measurements/MeasurementMath.h"
@@ -132,6 +138,46 @@ private:
     static double distanceToLine(const QPointF& p, const Viewport::GuideHandles& h) {
         const QPointF rel = p - h.center;
         return std::abs(rel.x() * h.dir.y() - rel.y() * h.dir.x());
+    }
+
+    // An axial series and its scout (coronal topogram) of the same exam; the
+    // scout has its own Frame of Reference, as some scanners write.
+    static bool writeScoutExam(const QString& path) {
+        bool ok = true;
+        const std::string study = makeUid("refstudy");
+        const std::string axialUid = makeUid("refaxial");
+        const std::string scoutUid = makeUid("refscout");
+        const std::string axialFor = makeUid("refforA");
+        for (int k = 0; k < 6; ++k) {
+            SyntheticImage img;
+            img.studyInstanceUid = study;
+            img.seriesInstanceUid = axialUid;
+            img.frameOfReferenceUid = axialFor;
+            img.seriesNumber = 2;
+            img.seriesDescription = "AXIAL";
+            img.rows = img.columns = 32;
+            img.spacingRow = img.spacingColumn = 1.0;
+            img.position = {-16.0, -16.0, 10.0 + 2.0 * k};
+            img.instanceNumber = k + 1;
+            img.pixels.assign(32 * 32, 1024);
+            ok = ok && writeDicom(utf8ToPath((path + "/AX" + QString::number(k)).toStdString()), img);
+        }
+        SyntheticImage scout;
+        scout.studyInstanceUid = study;
+        scout.seriesInstanceUid = scoutUid;
+        scout.frameOfReferenceUid = makeUid("refforS");
+        scout.seriesNumber = 1;
+        scout.seriesDescription = "TOPOGRAMA";
+        scout.rows = 48;
+        scout.columns = 32;
+        scout.spacingRow = scout.spacingColumn = 1.0;
+        scout.rowDir = {1, 0, 0};
+        scout.colDir = {0, 0, -1};
+        scout.position = {-16.0, 0.0, 40.0};
+        scout.instanceNumber = 1;
+        scout.pixels.assign(48 * 32, 1024);
+        ok = ok && writeDicom(utf8ToPath((path + "/SCOUT").toStdString()), scout);
+        return ok;
     }
 
     static QAction* actionWithShortcut(QWidget* window, const QKeySequence& ks) {
@@ -630,39 +676,7 @@ private Q_SLOTS:
         // the scout has its own Frame of Reference, as some scanners write.
         QTemporaryDir dir;
         QVERIFY(dir.isValid());
-        const std::string study = makeUid("refstudy");
-        const std::string axialUid = makeUid("refaxial");
-        const std::string scoutUid = makeUid("refscout");
-        const std::string axialFor = makeUid("refforA");
-        for (int k = 0; k < 6; ++k) {
-            SyntheticImage img;
-            img.studyInstanceUid = study;
-            img.seriesInstanceUid = axialUid;
-            img.frameOfReferenceUid = axialFor;
-            img.seriesNumber = 2;
-            img.seriesDescription = "AXIAL";
-            img.rows = img.columns = 32;
-            img.spacingRow = img.spacingColumn = 1.0;
-            img.position = {-16.0, -16.0, 10.0 + 2.0 * k};
-            img.instanceNumber = k + 1;
-            img.pixels.assign(32 * 32, 1024);
-            QVERIFY(writeDicom(utf8ToPath((dir.path() + "/AX" + QString::number(k)).toStdString()), img));
-        }
-        SyntheticImage scout;
-        scout.studyInstanceUid = study;
-        scout.seriesInstanceUid = scoutUid;
-        scout.frameOfReferenceUid = makeUid("refforS");
-        scout.seriesNumber = 1;
-        scout.seriesDescription = "TOPOGRAMA";
-        scout.rows = 48;
-        scout.columns = 32;
-        scout.spacingRow = scout.spacingColumn = 1.0;
-        scout.rowDir = {1, 0, 0};
-        scout.colDir = {0, 0, -1};
-        scout.position = {-16.0, 0.0, 40.0};
-        scout.instanceNumber = 1;
-        scout.pixels.assign(48 * 32, 1024);
-        QVERIFY(writeDicom(utf8ToPath((dir.path() + "/SCOUT").toStdString()), scout));
+        QVERIFY(writeScoutExam(dir.path()));
 
         QStandardPaths::setTestModeEnabled(true);
         auto* window = new MainWindow;
@@ -999,6 +1013,193 @@ private Q_SLOTS:
         settings.setSeriesPanel(false, 0);
     }
 
+    void planeButtonReformatsTheActiveSeries() {
+        QStandardPaths::setTestModeEnabled(true);
+        auto* window = new MainWindow;
+        QString why;
+        QVERIFY2(openWindowWith(window, tmp_.path(), &why) != nullptr, qPrintable(why));
+        auto* grid = window->findChild<ViewerGrid*>();
+        grid->setLayoutGrid(1, 1);
+        Viewport* vp = grid->activeViewport();
+        const auto* stack = dynamic_cast<StackSource*>(vp->source().get());
+        QVERIFY(stack != nullptr && stack->series()->frameCount() == 16);  // series A, acquired axial
+        QAction* plane = actionWithShortcut(window, QKeySequence(QStringLiteral("Ctrl+Shift+P")));
+        QVERIFY(plane != nullptr && plane->isEnabled());
+        auto orientationOf = [vp]() -> int {
+            const auto* ms = dynamic_cast<MprSource*>(vp->source().get());
+            return ms != nullptr ? static_cast<int>(ms->orientation()) : -1;
+        };
+        // Axial (acquired) -> sagittal -> coronal -> axial again (original images).
+        plane->trigger();
+        QTRY_COMPARE_WITH_TIMEOUT(orientationOf(), static_cast<int>(MprOrientation::Sagittal), 30000);
+        QTRY_VERIFY(vp->currentFrame() != nullptr);
+        QVERIFY(vp->mprGuides().empty());  // a single plane has no crosshair
+        QCOMPARE(plane->iconText(), QStringLiteral("Plano: Sagital"));
+        saveShot(window, QStringLiteral("plane-sagittal"));
+        plane->trigger();
+        QTRY_COMPARE_WITH_TIMEOUT(orientationOf(), static_cast<int>(MprOrientation::Coronal), 30000);
+        plane->trigger();
+        QTRY_VERIFY_WITH_TIMEOUT(dynamic_cast<StackSource*>(vp->source().get()) != nullptr, 30000);
+        QCOMPARE(plane->iconText(), QStringLiteral("Plano: Axial"));
+        // Layout 1 × 3 is offered.
+        QAction* oneByThree = nullptr;
+        for (auto* a : window->findChildren<QAction*>()) {
+            if (a->text() == QStringLiteral("1 × 3")) {
+                oneByThree = a;
+            }
+        }
+        QVERIFY(oneByThree != nullptr);
+        oneByThree->trigger();
+        QCOMPARE(grid->rows(), 1);
+        QCOMPARE(grid->cols(), 3);
+        // Toolbar: "Rolar", no capture or reset buttons any more.
+        auto* tb = window->findChild<QToolBar*>(QStringLiteral("mainToolbar"));
+        QVERIFY(tb != nullptr);
+        QStringList labels;
+        for (auto* a : tb->actions()) {
+            labels << a->iconText();
+            QVERIFY(a->shortcut() != QKeySequence(QStringLiteral("Ctrl+0")));
+            QVERIFY(a->shortcut() != QKeySequence(QStringLiteral("Ctrl+Shift+C")));
+        }
+        QVERIFY2(labels.contains(QStringLiteral("Rolar")), qPrintable(labels.join(',')));
+        QVERIFY(!labels.contains(QStringLiteral("Cortes")));
+        delete window;
+    }
+
+    void mprMenuThicknessAndCrosshairButton() {
+        QStandardPaths::setTestModeEnabled(true);
+        AppSettings::instance().setMprCrosshairVisible(true);
+        auto* window = new MainWindow;
+        QString why;
+        QVERIFY2(openWindowWith(window, tmp_.path(), &why) != nullptr, qPrintable(why));
+        auto* grid = window->findChild<ViewerGrid*>();
+        QMenu* mprMenu = nullptr;
+        for (auto* m : window->menuBar()->findChildren<QMenu*>()) {
+            if (m->title() == QStringLiteral("M&PR")) {
+                mprMenu = m;
+            }
+        }
+        QVERIFY(mprMenu != nullptr);
+        // Every option is in the menu itself: no submenu that might not open.
+        QAction* fiveMm = nullptr;
+        for (auto* a : mprMenu->actions()) {
+            QVERIFY2(a->menu() == nullptr, qPrintable(a->text()));
+            if (a->text() == QStringLiteral("5 mm")) {
+                fiveMm = a;
+            }
+        }
+        QVERIFY(fiveMm != nullptr && fiveMm->isEnabled());
+        // Chosen before the MPR is open: the MPR opens with that thickness.
+        fiveMm->trigger();
+        QTRY_VERIFY_WITH_TIMEOUT(grid->mprSession() != nullptr, 30000);
+        for (auto o : {MprOrientation::Axial, MprOrientation::Coronal, MprOrientation::Sagittal}) {
+            QCOMPARE(grid->mprSession()->slab(o).thickness, 5.0);
+        }
+        QVERIFY(fiveMm->isChecked());
+        if (!qEnvironmentVariable("VISUALTC_TEST_SCREENSHOTS").isEmpty()) {
+            for (auto* m : window->findChildren<QMenu*>()) {
+                if (m->title() == QStringLiteral("MPR")) {  // the toolbar button's copy
+                    m->popup(QPoint(400, 120));
+                    QTest::qWait(100);
+                    saveShot(m, QStringLiteral("mpr-menu"));
+                    m->hide();
+                }
+            }
+            saveShot(window, QStringLiteral("mpr-slab5"));
+        }
+        // "Cruz" hides and shows the crosshair lines.
+        QAction* cross = actionWithShortcut(window, QKeySequence(QStringLiteral("X")));
+        QVERIFY(cross != nullptr && cross->isEnabled() && cross->isChecked());
+        auto anyGuides = [grid] {
+            for (auto* v : grid->visibleViewports()) {
+                if (!v->mprGuides().empty()) {
+                    return true;
+                }
+            }
+            return false;
+        };
+        QVERIFY(anyGuides());
+        cross->trigger();
+        QVERIFY(!cross->isChecked());
+        QVERIFY(!anyGuides());
+        QVERIFY(!AppSettings::instance().mprCrosshairVisible());
+        cross->trigger();
+        QVERIFY(anyGuides());
+        delete window;
+    }
+
+    void closeButtonRemovesOnlyThatStudy() {
+        QTemporaryDir other;
+        QVERIFY(other.isValid());
+        QVERIFY(writeScoutExam(other.path()));
+        QStandardPaths::setTestModeEnabled(true);
+        auto* window = new MainWindow;
+        window->resize(1200, 800);
+        window->show();
+        window->importPaths({tmp_.path(), other.path()});
+        auto* browser = window->findChild<SeriesBrowser*>();
+        QTRY_COMPARE_WITH_TIMEOUT(browser->seriesCount(), 4, 30000);
+        auto* grid = window->findChild<ViewerGrid*>();
+        QTRY_VERIFY_WITH_TIMEOUT(grid->activeViewport()->currentFrame() != nullptr, 30000);
+        const QPoint x = browser->closeButtonCenter(0);
+        QVERIFY(x.x() > 0);
+        QTest::mouseClick(browser->viewport(), Qt::LeftButton, Qt::NoModifier, x);
+        QTRY_COMPARE(browser->seriesCount(), 2);
+        // Nothing of the closed study is left on screen.
+        QSet<QString> remaining;
+        for (int i = 0; i < browser->topLevelItemCount(); ++i) {
+            const QString id = browser->topLevelItem(i)->data(0, Qt::UserRole).toString();
+            if (!id.isEmpty()) {
+                remaining.insert(id);
+            }
+        }
+        QCOMPARE(remaining.size(), 2);
+        for (auto* vp : window->findChildren<Viewport*>()) {
+            if (const auto* st = dynamic_cast<StackSource*>(vp->source().get())) {
+                QVERIFY(remaining.contains(QString::fromStdString(st->series()->id)));
+            }
+        }
+        // It can be opened again.
+        window->importPaths({tmp_.path(), other.path()});
+        QTRY_COMPARE_WITH_TIMEOUT(browser->seriesCount(), 4, 30000);
+        delete window;
+    }
+
+    void accentColorIsAppliedToTheInterface() {
+        const QString oldSheet = qApp->styleSheet();
+        const QPalette oldPalette = qApp->palette();
+        const QString oldStyle = qApp->style()->name();
+        for (Accent a : kAccents) {
+            Theme::apply(*qApp, true, a);
+            QCOMPARE(Theme::colors().accent, Theme::accentColor(a, true));
+            QVERIFY(qApp->styleSheet().contains(Theme::accentColor(a, true).name(), Qt::CaseInsensitive));
+            QCOMPARE(Theme::accentFromKey(Theme::accentKey(a)), a);
+            QVERIFY(!Theme::accentName(a).isEmpty());
+            // Readable: the dim variant (checked buttons) stays dark.
+            QVERIFY(Theme::colors().accentDim.lightness() < 120);
+        }
+        QCOMPARE(Theme::accentFromKey(QStringLiteral("desconhecida")), Accent::Blue);
+        // Preferences offer the colours and the three languages.
+        {
+            PreferencesDialog dlg;
+            dlg.show();
+            bool colours = false;
+            bool languages = false;
+            for (auto* combo : dlg.findChildren<QComboBox*>()) {
+                colours = colours || combo->findText(QStringLiteral("Verde neon")) >= 0;
+                languages = languages || (combo->findText(QStringLiteral("Español")) >= 0 &&
+                                          combo->findText(QStringLiteral("English")) >= 0 &&
+                                          combo->findText(QStringLiteral("Português (Brasil)")) >= 0);
+            }
+            QVERIFY(colours);
+            QVERIFY(languages);
+            saveShot(&dlg, QStringLiteral("preferences"));
+        }
+        qApp->setStyleSheet(oldSheet);
+        qApp->setPalette(oldPalette);
+        QApplication::setStyle(oldStyle);
+    }
+
     void systemFileOpenEventImportsExam() {
         // macOS hands documents over as QFileOpenEvent ("Abrir com", a CD
         // folder dropped on the Dock icon, double-click on a .dcm).
@@ -1011,6 +1212,37 @@ private Q_SLOTS:
         QFileOpenEvent open(tmp_.path());
         QCoreApplication::sendEvent(qApp, &open);
         QTRY_COMPARE_WITH_TIMEOUT(browser->seriesCount(), 2, 30000);
+        delete window;
+    }
+
+    // Last: installs the Spanish translation for the rest of the run.
+    void spanishAndEnglishTranslations() {
+        QCOMPARE(languageFromKey(QStringLiteral("es")), Language::Spanish);
+        QCOMPARE(languageKey(Language::English), QStringLiteral("en"));
+        installLanguage(*qApp, Language::Spanish);
+        QVERIFY(translationSize() > 400);
+        QCOMPARE(currentLanguage(), Language::Spanish);
+        QCOMPARE(QCoreApplication::translate("MainWindow", "Rolar"), QStringLiteral("Desplazar"));
+        QCOMPARE(QCoreApplication::translate("SeriesBrowser", "%n imagem(ns)", nullptr, 1), QStringLiteral("1 imagen"));
+        QCOMPARE(QCoreApplication::translate("SeriesBrowser", "%n imagem(ns)", nullptr, 3), QStringLiteral("3 imágenes"));
+        // Messages of the core, with their variable parts.
+        QCOMPARE(trCore(std::string("Arquivo DICOM corrompido (sequência corrompida).")),
+                 QStringLiteral("Archivo DICOM dañado (secuencia dañada)."));
+        QCOMPARE(trCore(std::string("O arquivo compactado exame 1.zip está protegido por senha.")),
+                 QStringLiteral("El archivo comprimido exame 1.zip está protegido con contraseña."));
+        QCOMPARE(trCore(QStringLiteral("texto que não é do VisualTC")), QStringLiteral("texto que não é do VisualTC"));
+        QCOMPARE(QLocale().decimalPoint(), QStringLiteral(","));
+        // The window itself.
+        QStandardPaths::setTestModeEnabled(true);
+        auto* window = new MainWindow;
+        QCOMPARE(window->menuBar()->actions().front()->text(), QStringLiteral("&Archivo"));
+        auto* browser = window->findChild<SeriesBrowser*>();
+        browser->setDatabase(db_);
+        bool found = false;
+        for (int i = 0; i < browser->topLevelItemCount(); ++i) {
+            found = found || browser->topLevelItem(i)->toolTip(0).contains(QStringLiteral("16 imágenes"));
+        }
+        QVERIFY(found);
         delete window;
     }
 

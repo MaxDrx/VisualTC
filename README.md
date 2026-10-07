@@ -21,7 +21,7 @@ no GitHub Pages — veja [docs/BUILD.md](docs/BUILD.md#publicar-uma-versão)).
 
 ![VisualTC — MPR com crosshair](docs/screenshots/mpr.png)
 
-> **Aviso:** esta versão (0.3.0) não é um dispositivo médico registrado
+> **Aviso:** esta versão (0.4.0) é destinada a **estudos e pesquisas** e não é um dispositivo médico registrado
 > (ANVISA/FDA/CE). Medidas e reconstruções devem ser conferidas antes de
 > qualquer uso diagnóstico.
 
@@ -31,13 +31,13 @@ no GitHub Pages — veja [docs/BUILD.md](docs/BUILD.md#publicar-uma-versão)).
 |---|---|
 | Importação | Abrir arquivos, abrir pasta, arrastar e soltar; arquivos sem extensão e em subpastas; detecção pelo conteúdo, não pela extensão; arquivos corrompidos são relatados e nunca encerram o programa |
 | Exames compactados | **ZIP** (inclusive com senha), **RAR**, **7z**, TAR, GZ, BZ2, XZ, ZST e imagem de CD (ISO), também um dentro do outro; extraídos no processo isolado, em pasta temporária apagada ao fechar; proteção contra “bombas” de compressão e nomes maliciosos |
-| Interface | Painel de séries **recolhível** (botão « ou F2) e redimensionável até só as miniaturas, para as imagens ocuparem quase toda a tela; estado lembrado entre sessões |
+| Interface | **Português, espanhol ou inglês**; **cor de destaque** à escolha (azul, sépia, amarelo, dourado, verde neon, laranja); painel de séries **recolhível** (botão « ou F2) e redimensionável até só as miniaturas, com **×** para fechar um estudo; estado lembrado entre sessões |
 | Organização | Paciente → Estudo → Série → Imagem; ordenação **espacial** (ImagePositionPatient × normal da orientação), nunca só por InstanceNumber; separação automática de ecos, fases, clipes de US e localizadores |
 | Formatos | Explicit/Implicit VR, Big Endian, Deflate, JPEG Baseline/Extended, JPEG Lossless, JPEG-LS, **JPEG 2000**, RLE; monocromático (MONOCHROME1/2), RGB, YBR, PALETTE COLOR; multiframe; Enhanced CT/MR (functional groups) |
 | Visualização 2D | Scroll (roda, trackpad, teclado, arrasto), Window/Level interativo, presets de TC (pulmão, mediastino, abdome, fígado, osso, cérebro, subdural, AVC), presets do arquivo, VOI LUT, presets personalizados, **tabelas de cores** (ferro quente, PET, arco-íris, osso…), zoom, pan, 1:1, ajuste, rotação 90°/livre, espelhamento, inversão, interpolação linear/vizinho mais próximo, cine |
 | Informações | Overlay configurável (paciente, estudo, série, WW/WL, zoom, espessura, imagem X/N, posição), letras de orientação calculadas dos vetores DICOM, avisos de compressão com perdas, rotação/espelhamento e calibração ausente |
 | Medidas | Régua, ângulo, Cobb, ROI retangular/elíptica/livre (área, média, DP, mínimo, máximo em **HU**), valor do pixel, histograma da ROI, desfazer/refazer, edição de pontos e rótulos |
-| Multiview | Layouts 1×1 a 3×3, série por viewport, arrastar série para viewport, maximizar com duplo clique, **sincronização por posição anatômica** (Frame of Reference), **linhas de referência** (inclusive sobre o topograma, que é aberto ao lado automaticamente) |
+| Multiview | Layouts 1×1 a 3×3 (inclusive 1×3), botão **Plano** (axial → sagital → coronal da série ativa), série por viewport, arrastar série para viewport, maximizar com duplo clique, **sincronização por posição anatômica** (Frame of Reference), **linhas de referência** (inclusive sobre o topograma, que é aberto ao lado automaticamente) |
 | MPR | Axial, coronal e sagital; **linhas guia manipuladas com o mouse**: arrastar a linha move o plano, a bolinha gira (**oblíquo** em qualquer ângulo), a barrinha define a **espessura** (média, MIP, MinIP, 1–500 mm) de cada plano; scroll independente |
 | Exportação | PNG/JPEG (TIFF quando disponível), com ou sem anotações, opção de ocultar a identificação do paciente; captura do viewport para a área de transferência |
 | Segurança | Cada arquivo é lido e decodificado em um **processo isolado** (`visualtc-worker`); falhas de codecs de terceiros com arquivos maliciosos não derrubam o visualizador; validação estrutural antes da leitura; limites de memória; nenhuma telemetria; log sem dados de paciente |

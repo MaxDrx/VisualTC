@@ -13,6 +13,7 @@
 #include <cmath>
 #include <numbers>
 
+#include "app/I18n.h"
 #include "app/AppSettings.h"
 #include "app/Theme.h"
 #include "dicom/TextUtil.h"
@@ -1017,7 +1018,7 @@ void Viewport::drawOverlayText(QPainter& p, const QSize& size) const {
         bl << tr("WW %1  WL %2").arg(num(width_, 0), num(center_, 0));
     }
     if (colorMap_ != ColorMap::Gray && shownFrame_ && !shownFrame_->isColor()) {
-        bl << tr("LUT %1").arg(QString::fromStdString(colorMapName(colorMap_)));
+        bl << tr("LUT %1").arg(trCore(colorMapName(colorMap_)));
     }
     bl << tr("Zoom %1%").arg(num(zoomPercent(), 0));
     const auto g = source_->geometryAt(slice_);

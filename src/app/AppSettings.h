@@ -23,6 +23,12 @@ public:
     void setDarkTheme(bool on);
     int fontPointSize() const;  // 0 = system default
     void setFontPointSize(int pt);
+    QString accentColor() const;  // Theme::accentKey
+    void setAccentColor(const QString& key);
+    QString language() const;  // "pt", "es", "en"; empty = not chosen yet
+    void setLanguage(const QString& key);
+    // Anything saved before: the program was used (an earlier version).
+    bool hasPreviousUse() const;
 
     // Mouse
     MouseAction leftButton() const;
@@ -53,6 +59,8 @@ public:
     void setSyncZoomPan(bool on);
     bool syncWindow() const;
     void setSyncWindow(bool on);
+    bool mprCrosshairVisible() const;
+    void setMprCrosshairVisible(bool on);
 
     QList<WindowPreset> customPresets() const;
     void setCustomPresets(const QList<WindowPreset>& presets);

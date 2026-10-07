@@ -14,14 +14,14 @@ Os demais arquivos abaixo (código-fonte, `SHA256SUMS.txt`) não são necessári
 
 ### Novidades desta versão
 
-- **MPR direto com o mouse**: arraste a linha colorida para mover o plano, a bolinha na ponta para girar
-  (MPR oblíquo em qualquer ângulo) e a barrinha ao lado para dar espessura (MIP/MinIP) só àquele plano.
-- **Linhas de referência** corrigidas: aparecem sobre o topograma mesmo quando ele tem outro sistema de
-  coordenadas; com uma só imagem na tela, o botão **Ref.** abre o topograma ao lado.
-- **Tabela de cores (LUT)**: ferro quente, PET, arco-íris, osso, cobre, fogo e gelo (botão **LUT**).
-- **Histograma da ROI** corrigido (atalho ⌘⇧H no Mac, Ctrl+Shift+H no Windows/Linux).
-- Barra de ferramentas com mais espaço entre os botões e adaptada a telas de notebook.
-- A reconstrução 3D foi retirada para deixar o programa mais leve; o MPR continua completo.
+- **Idiomas**: português, espanhol e inglês (Preferências › Interface).
+- **Cor de destaque** à escolha: azul, sépia, amarelo, dourado, verde neon ou laranja (Exibir › Cor de destaque).
+- **Botão Plano**: alterna a série aberta entre axial, sagital e coronal.
+- **Fechar um estudo** pelo **×** ao lado do nome do paciente, sem fechar o programa.
+- **MPR**: o menu de espessura (MIP/MinIP) foi corrigido e o botão **Cruz** mostra/oculta as linhas.
+- Layout **1 × 3**; botão **Cortes** agora se chama **Rolar**; botões Capturar e Reset saíram da barra (continuam
+  nos menus Arquivo e Exibir).
+- **Sobre o VisualTC**: criado por Dr Marcelo Duarte — Brasil; uso destinado a estudos e pesquisas.
 
 ### Apareceu um aviso na primeira vez?
 

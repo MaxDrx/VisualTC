@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstdio>
 
+#include "app/I18n.h"
 #include "app/Theme.h"
 
 namespace vtc {
@@ -82,7 +83,7 @@ const FrameInfo* MprSource::frameInfoAt(int /*index*/) const {
 }
 
 QString MprSource::seriesLabel() const {
-    QString label = "MPR " + QString::fromStdString(toLabel(orientation_));
+    QString label = "MPR " + trCore(toLabel(orientation_));
     if (session_->isOblique(orientation_)) {
         label += tr(" (oblíquo)");
     }
@@ -92,7 +93,7 @@ QString MprSource::seriesLabel() const {
     }
     const auto& s = session_->series();
     if (s) {
-        label += " · " + QString::fromStdString(s->description());
+        label += " · " + seriesDescription(*s);
     }
     return label;
 }

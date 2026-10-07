@@ -1,4 +1,4 @@
-# Suporte DICOM do VisualTC 0.3.0
+# Suporte DICOM do VisualTC 0.4.0
 
 Este documento descreve o que o VisualTC lê, como interpreta cada atributo
 relevante e quais são as limitações conhecidas. "Testado" significa coberto

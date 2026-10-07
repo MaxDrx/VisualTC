@@ -1,0 +1,118 @@
+# Messages of the core library (no Qt, always Portuguese). The interface
+# translates them with trCore(): %1, %2... stand for the variable parts
+# (file names, numbers), which are translated too when they are known texts.
+# Keep this list in step with the code; tools/i18n.py checks the translations.
+#
+# Import / reading
+Este arquivo não pôde ser interpretado como DICOM.
+Arquivo truncado: os dados de pixel estão incompletos.
+Não foi possível abrir o arquivo compactado %1.
+O arquivo compactado %1 não contém imagens DICOM.
+Arquivo inacessível.
+Arquivo excede o tamanho máximo configurado.
+Arquivo DICOM corrompido (%1).
+DICOMDIR (índice de mídia) ignorado.
+Dados de pixel em ponto flutuante (Float/Double Float Pixel Data, ex.: mapas paramétricos) não são suportados nesta versão.
+Objeto DICOM sem imagem (%1).
+Dimensões da imagem fora dos limites suportados.
+Formato de pixel não suportado (BitsAllocated=%1, BitsStored=%2, SamplesPerPixel=%3).
+Imagem descomprimida excederia o limite de memória configurado.
+Transfer Syntax não suportada: %1 (%2), SOP Class %3.
+# Corruption details (inside "Arquivo DICOM corrompido (...)")
+VR inválida com comprimento incompatível
+delimitador com comprimento inválido
+delimitador de item com comprimento inválido
+comprimento indefinido em elemento que não o permite
+fragmento RLE menor que o cabeçalho
+cabeçalho RLE com número de segmentos inválido
+cabeçalho RLE com deslocamento inicial inválido
+cabeçalho RLE com deslocamentos inválidos
+delimitador de sequência com comprimento inválido
+sequência corrompida
+item maior que a sequência que o contém
+cabeçalho (File Meta) com VR inválida
+cabeçalho (File Meta) corrompido
+# Decoding
+Arquivo não encontrado ou inacessível.
+Não foi possível ler os dados de pixel (Transfer Syntax: %1).
+Dimensões da imagem inconsistentes com o cabeçalho DICOM.
+Fluxo JPEG corrompido (%1).
+precisão JPEG inválida (%1 bits)
+número de componentes do JPEG diferente do cabeçalho DICOM
+Não foi possível aplicar a tabela de cores (PALETTE COLOR).
+Formato de pixel não suportado após decodificação.
+Dados de pixel em ponto flutuante não são suportados nesta versão.
+Dados de pixel incompletos ou corrompidos.
+Falha ao decodificar os pixels (Transfer Syntax: %1).
+Memória insuficiente para decodificar a imagem.
+Erro inesperado ao decodificar a imagem.
+O decodificador isolado encerrou inesperadamente ao processar este arquivo; ele pode estar corrompido ou conter dados inválidos.
+Tempo esgotado ao decodificar este arquivo.
+Arquivo não pôde ser lido.
+Erro inesperado no decodificador.
+O arquivo não contém quadros decodificáveis.
+As dimensões da imagem decodificada não correspondem ao cabeçalho lido na importação (o arquivo foi alterado?).
+O quadro %1 não existe no arquivo (%2 quadros decodificados).
+# Compressed exams
+O arquivo compactado %1 está protegido por senha.
+Senha incorreta para o arquivo compactado %1.
+O arquivo compactado %1 usa um recurso não suportado (por exemplo, 7z ou RAR protegido por senha, ou arquivo dividido em partes). Extraia-o com o programa de compactação e abra a pasta.
+O arquivo compactado %1 está danificado ou incompleto.
+O conteúdo de %1 excede os limites de segurança de extração (tamanho ou taxa de compressão suspeitos).
+Espaço em disco insuficiente para extrair %1.
+Não foi possível gravar os arquivos extraídos de %1.
+Extração de %1 cancelada.
+O arquivo %1 não é um arquivo compactado reconhecido.
+%1 membro(s) de %2 ignorado(s) por excederem o tamanho máximo por arquivo.
+Extração cancelada.
+Tempo esgotado ao extrair o arquivo compactado.
+O extrator isolado encerrou inesperadamente; o arquivo compactado pode estar danificado.
+Erro inesperado ao extrair o arquivo compactado.
+# Series geometry
+Informação geométrica (posição, orientação ou espaçamento) ausente em parte das imagens.
+As imagens da série não são paralelas entre si.
+As imagens da série possuem dimensões ou espaçamento de pixel diferentes.
+As imagens pertencem a sistemas de coordenadas (Frame of Reference) diferentes.
+Há cortes duplicados na mesma posição espacial.
+A série possui cortes ausentes ou geometria inconsistente. Algumas reconstruções podem não ser confiáveis.
+O espaçamento entre cortes é irregular; o MPR usa as posições reais de cada corte.
+Aquisição com inclinação do gantry (gantry tilt); a geometria real foi preservada no MPR.
+Poucos cortes para reconstrução volumétrica.
+Imagens coloridas não são reconstruídas volumetricamente.
+# Volume (MPR)
+Não foi possível construir um volume espacial consistente a partir desta série.
+Memória insuficiente para montar o volume desta série (%1 MB necessários, limite %2 MB).
+Memória insuficiente para montar o volume desta série.
+Cancelado.
+Falha ao carregar o corte %1 para o volume.
+# Names: planes, series parts, window presets, colour tables, orientation
+Axial
+Coronal
+Sagital
+Oblíqua
+Oblíquo
+Axial %1
+Coronal %1
+Sagital %1
+Oblíqua %1
+Eco %1
+Fase %1
+Aquisição %1
+Clipe %1
+Outras
+Trigger %1 ms
+Pulmão
+Mediastino
+Abdome
+Fígado
+Osso
+Cérebro
+Subdural
+AVC
+Tons de cinza
+Ferro quente (Hot Iron)
+PET
+Arco-íris
+Cobre
+Fogo
+Gelo

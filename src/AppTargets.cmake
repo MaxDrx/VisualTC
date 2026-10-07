@@ -6,6 +6,7 @@ qt_standard_project_setup()
 
 set(VISUALTC_UI_SOURCES
     app/AppSettings.cpp
+    app/I18n.cpp
     app/Theme.cpp
     io/DecoderClient.cpp
     io/ExtractionArea.cpp
@@ -35,6 +36,14 @@ target_include_directories(visualtc_ui PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(visualtc_ui PUBLIC VisualTC::core Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Concurrent Qt6::Svg)
 target_compile_definitions(visualtc_ui PUBLIC
     VISUALTC_VERSION="${PROJECT_VERSION}")
+# Interface translations (source text -> translation), see app/I18n.h.
+qt_add_resources(visualtc_ui "visualtc_i18n"
+    PREFIX "/"
+    BASE ${CMAKE_SOURCE_DIR}/resources
+    FILES
+        ${CMAKE_SOURCE_DIR}/resources/i18n/en.json
+        ${CMAKE_SOURCE_DIR}/resources/i18n/es.json
+)
 
 set(VISUALTC_ICNS ${CMAKE_SOURCE_DIR}/packaging/macos/VisualTC.icns)
 set_source_files_properties(${VISUALTC_ICNS} PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
@@ -83,9 +92,29 @@ qt_add_resources(VisualTC "visualtc_resources"
         ${CMAKE_SOURCE_DIR}/resources/icons/menu-arrow.svg
         ${CMAKE_SOURCE_DIR}/resources/icons/histogram.svg
         ${CMAKE_SOURCE_DIR}/resources/icons/lut.svg
+        ${CMAKE_SOURCE_DIR}/resources/icons/plane.svg
 )
 target_link_libraries(VisualTC PRIVATE visualtc_ui)
 add_dependencies(VisualTC visualtc-worker)
+# Qt's own texts (standard buttons, file dialogs) in Portuguese and Spanish,
+# inside the program: the Mac bundle and the AppImage do not carry Qt's
+# translation folder.
+set(VISUALTC_QT_QM_DIR "${QT6_INSTALL_PREFIX}/${QT6_INSTALL_TRANSLATIONS}")
+set(VISUALTC_QT_QM)
+foreach(lang pt_BR es)
+    if(EXISTS "${VISUALTC_QT_QM_DIR}/qtbase_${lang}.qm")
+        list(APPEND VISUALTC_QT_QM "${VISUALTC_QT_QM_DIR}/qtbase_${lang}.qm")
+    endif()
+endforeach()
+if(VISUALTC_QT_QM)
+    qt_add_resources(VisualTC "visualtc_qt_translations"
+        PREFIX "/qt-translations"
+        BASE "${VISUALTC_QT_QM_DIR}"
+        FILES ${VISUALTC_QT_QM})
+    message(STATUS "Traduções do Qt embutidas: ${VISUALTC_QT_QM}")
+else()
+    message(STATUS "Traduções do Qt (qtbase_pt_BR.qm, qtbase_es.qm) não encontradas em ${VISUALTC_QT_QM_DIR}")
+endif()
 set_target_properties(VisualTC PROPERTIES
     OUTPUT_NAME VisualTC
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin

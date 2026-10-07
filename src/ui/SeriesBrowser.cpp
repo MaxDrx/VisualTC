@@ -1,6 +1,7 @@
 #include "ui/SeriesBrowser.h"
 
 #include <QContextMenuEvent>
+#include <QMouseEvent>
 #include <QLocale>
 #include <QMenu>
 #include <QMimeData>
@@ -9,17 +10,35 @@
 #include <algorithm>
 
 #include "app/Theme.h"
+#include "app/I18n.h"
 #include "dicom/TextUtil.h"
 
 namespace vtc {
 
 namespace {
 
-enum Role { SeriesIdRole = Qt::UserRole, KindRole, TitleRole, DetailRole, WarningRole, DisplayedRole, BadgeRole };
+enum Role {
+    SeriesIdRole = Qt::UserRole,
+    KindRole,
+    TitleRole,
+    DetailRole,
+    WarningRole,
+    DisplayedRole,
+    BadgeRole,
+    PatientKeyRole,
+    StudyKeyRole,
+    CloseHoverRole
+};
 constexpr int kThumb = 64;
 // Below this text width the panel was dragged narrow: show thumbnails only
 // (the details stay in the tooltip).
 constexpr int kMinTextWidth = 64;
+
+// "×" at the right of a study header: closes that study.
+QRect closeRectFor(const QRect& itemRect) {
+    const QRect r = itemRect.adjusted(2, 2, -2, -2);
+    return {r.right() - 21, r.top() + 1, 20, 20};
+}
 
 class SeriesDelegate : public QStyledItemDelegate {
 public:
@@ -41,18 +60,31 @@ public:
         const bool hover = option.state & QStyle::State_MouseOver;
         if (index.data(KindRole).toInt() == 0) {
             // Study header
+            const QRect close = closeRectFor(option.rect);
+            const bool closeHover = index.data(CloseHoverRole).toBool();
+            if (closeHover) {
+                p->setPen(Qt::NoPen);
+                p->setBrush(c.panelBorder);
+                p->drawRoundedRect(close, 4, 4);
+            }
+            QPen x(closeHover ? c.text : c.textSecondary, 1.6);
+            x.setCapStyle(Qt::RoundCap);
+            p->setPen(x);
+            const QRectF cross = QRectF(close).adjusted(6, 6, -6, -6);
+            p->drawLine(cross.topLeft(), cross.bottomRight());
+            p->drawLine(cross.topRight(), cross.bottomLeft());
             p->setPen(c.accent);
             QFont f = option.font;
             f.setBold(true);
             p->setFont(f);
-            const QRect titleRect = r.adjusted(4, 2, -4, 0);
+            const QRect titleRect = r.adjusted(4, 2, -26, 0);
             p->drawText(titleRect, Qt::AlignLeft | Qt::AlignTop,
                         QFontMetrics(f).elidedText(index.data(TitleRole).toString(), Qt::ElideRight,
                                                    titleRect.width()));
             f.setBold(false);
             p->setFont(f);
             p->setPen(c.textSecondary);
-            const QRect detailRect = r.adjusted(4, 0, -4, -2);
+            const QRect detailRect = r.adjusted(4, 0, -26, -2);
             p->drawText(detailRect, Qt::AlignLeft | Qt::AlignBottom,
                         QFontMetrics(f).elidedText(index.data(DetailRole).toString(), Qt::ElideRight,
                                                    detailRect.width()));
@@ -190,6 +222,7 @@ void SeriesBrowser::setDatabase(const StudyDatabase& db) {
     for (const auto& [id, item] : items_) {
         oldThumbs[id] = item->data(0, Qt::DecorationRole);
     }
+    setCloseHover(nullptr);
     clear();
     items_.clear();
     const QLocale loc;
@@ -198,17 +231,21 @@ void SeriesBrowser::setDatabase(const StudyDatabase& db) {
             auto* header = new QTreeWidgetItem(this);
             header->setData(0, KindRole, 0);
             header->setFlags(Qt::ItemIsEnabled);
-            const QString name = QString::fromStdString(patient->name.empty() ? "(sem nome)" : patient->name);
+            const QString name =
+                patient->name.empty() ? tr("(sem nome)") : QString::fromStdString(patient->name);
             header->setData(0, TitleRole, name);
             QString detail = QString::fromStdString(formatDicomDate(study->date));
             if (!study->description.empty()) {
                 detail += "  ·  " + QString::fromStdString(study->description);
             }
             header->setData(0, DetailRole, detail);
+            header->setData(0, PatientKeyRole, QString::fromStdString(patient->key));
+            header->setData(0, StudyKeyRole, QString::fromStdString(study->key));
             header->setToolTip(0, tr("Paciente: %1\nID: %2\nEstudo: %3\nInstituição: %4")
                                       .arg(name, QString::fromStdString(patient->id),
                                            QString::fromStdString(study->description),
-                                           QString::fromStdString(study->institution)));
+                                           QString::fromStdString(study->institution)) +
+                                      "\n\n" + tr("× fecha este estudo (os demais continuam abertos)."));
             for (const auto& series : study->series) {
                 auto* item = new QTreeWidgetItem(this);
                 const QString id = QString::fromStdString(series->id);
@@ -216,7 +253,7 @@ void SeriesBrowser::setDatabase(const StudyDatabase& db) {
                 item->setData(0, KindRole, 1);
                 item->setFlags(Qt::ItemIsEnabled | Qt::ItemIsSelectable | Qt::ItemIsDragEnabled);
                 QString title = series->number() ? tr("Série %1").arg(*series->number()) : tr("Série");
-                const QString desc = QString::fromStdString(series->description());
+                const QString desc = seriesDescription(*series);
                 if (!desc.isEmpty()) {
                     title += " · " + desc;
                 }
@@ -241,7 +278,7 @@ void SeriesBrowser::setDatabase(const StudyDatabase& db) {
                     tip << line2;
                 }
                 for (auto issue : series->geometry.issues) {
-                    tip << QString::fromStdString(describe(issue));
+                    tip << trCore(describe(issue));
                 }
                 item->setToolTip(0, tip.join('\n'));
                 if (auto it = oldThumbs.find(id); it != oldThumbs.end()) {
@@ -264,6 +301,66 @@ void SeriesBrowser::markDisplayed(const QSet<QString>& seriesIds) {
         item->setData(0, DisplayedRole, seriesIds.contains(id));
     }
     viewport()->update();
+}
+
+QTreeWidgetItem* SeriesBrowser::closeButtonAt(const QPoint& pos) const {
+    QTreeWidgetItem* item = itemAt(pos);
+    if (item == nullptr || item->data(0, KindRole).toInt() != 0) {
+        return nullptr;
+    }
+    return closeRectFor(visualItemRect(item)).contains(pos) ? item : nullptr;
+}
+
+void SeriesBrowser::setCloseHover(QTreeWidgetItem* item) {
+    if (item == closeHover_) {
+        return;
+    }
+    if (closeHover_ != nullptr) {
+        closeHover_->setData(0, CloseHoverRole, false);
+    }
+    closeHover_ = item;
+    if (closeHover_ != nullptr) {
+        closeHover_->setData(0, CloseHoverRole, true);
+    }
+    viewport()->setCursor(item != nullptr ? Qt::PointingHandCursor : Qt::ArrowCursor);
+}
+
+void SeriesBrowser::mouseMoveEvent(QMouseEvent* event) {
+    setCloseHover(closeButtonAt(event->position().toPoint()));
+    QTreeWidget::mouseMoveEvent(event);
+}
+
+void SeriesBrowser::leaveEvent(QEvent* event) {
+    setCloseHover(nullptr);
+    QTreeWidget::leaveEvent(event);
+}
+
+void SeriesBrowser::mousePressEvent(QMouseEvent* event) {
+    if (event->button() == Qt::LeftButton) {
+        if (QTreeWidgetItem* item = closeButtonAt(event->position().toPoint())) {
+            const QString patientKey = item->data(0, PatientKeyRole).toString();
+            const QString studyKey = item->data(0, StudyKeyRole).toString();
+            setCloseHover(nullptr);
+            event->accept();
+            // After this event: the list is rebuilt when the study closes.
+            QMetaObject::invokeMethod(
+                this, [this, patientKey, studyKey] { Q_EMIT studyCloseRequested(patientKey, studyKey); },
+                Qt::QueuedConnection);
+            return;
+        }
+    }
+    QTreeWidget::mousePressEvent(event);
+}
+
+QPoint SeriesBrowser::closeButtonCenter(int studyIndex) const {
+    int n = 0;
+    for (int i = 0; i < topLevelItemCount(); ++i) {
+        QTreeWidgetItem* item = topLevelItem(i);
+        if (item->data(0, KindRole).toInt() == 0 && n++ == studyIndex) {
+            return closeRectFor(visualItemRect(item)).center();
+        }
+    }
+    return {-1, -1};
 }
 
 QString SeriesBrowser::currentSeriesId() const {

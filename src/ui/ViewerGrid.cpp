@@ -388,11 +388,12 @@ void ViewerGrid::updateReferenceLines() {
     refLineCount_ = 0;
     for (auto* vp : visible) {
         std::vector<GuideLine> lines;
-        if (activePlane && vp != active_ && asMpr(vp) == nullptr) {
+        const bool mprLayoutPlane = asMpr(vp) != nullptr && mpr_ && asMpr(vp)->session() == mpr_;
+        if (activePlane && vp != active_ && !mprLayoutPlane) {
             if (const auto target = vp->currentPlane(); target && referenceComparable(*activePlane, *target)) {
                 if (auto seg = referenceLine(*activePlane, *target)) {
                     QColor color = Theme::referenceLine();
-                    if (auto* ms = asMpr(active_)) {
+                    if (auto* ms = asMpr(active_); ms != nullptr && mpr_ && ms->session() == mpr_) {
                         color = MprSource::colorFor(ms->orientation());
                     }
                     lines.push_back({seg->first, seg->second, color, false});
@@ -551,9 +552,16 @@ void ViewerGrid::onMprCenterChanged() {
     }
 }
 
+void ViewerGrid::setMprGuidesVisible(bool on) {
+    guidesVisible_ = on;
+    updateCrosshairs();
+}
+
 void ViewerGrid::updateCrosshairs() {
     for (auto* vp : viewports_) {
-        if (auto* ms = asMpr(vp)) {
+        // Only the three planes of the MPR layout have a crosshair; a single
+        // reformatted plane (Plano button) shows just the image.
+        if (auto* ms = asMpr(vp); ms != nullptr && mpr_ && ms->session() == mpr_ && guidesVisible_) {
             vp->setMprGuides(ms->guides(vp->sliceIndex()), ms->crosshairPixel(vp->sliceIndex()));
         } else {
             vp->setMprGuides({}, std::nullopt);
