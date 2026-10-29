@@ -116,3 +116,7 @@ Arco-íris
 Cobre
 Fogo
 Gelo
+# 3D reconstruction
+A série tem poucos cortes para uma reconstrução 3D.
+A série não contém valores válidos para a reconstrução 3D.
+Memória insuficiente para a reconstrução 3D.

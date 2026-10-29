@@ -6,6 +6,8 @@
 #include <QDir>
 #include <QFileOpenEvent>
 #include <QLabel>
+#include <QListWidget>
+#include <QPointer>
 #include <QMenuBar>
 #include <QToolBar>
 #include <QMenu>
@@ -43,6 +45,10 @@
 #include "viewer2d/AnnotationStore.h"
 #include "viewer2d/StackSource.h"
 #include "viewer2d/Viewport.h"
+#include "render3d/CpuRayCaster.h"
+#include "view3d/GpuRayCaster.h"
+#include "view3d/VolumeRenderView.h"
+#include "view3d/VolumeRenderWindow.h"
 
 using namespace vtc;
 using namespace vtc::test;
@@ -1234,6 +1240,176 @@ private Q_SLOTS:
     }
 
     // Last: installs the Spanish translation for the rest of the run.
+    // 3D reconstruction window on a synthetic ball (bone-like inside, air
+    // around): presets, scissors, snapshot, processor and graphics card.
+    static VolumePtr ballVolume(int n, double radius) {
+        std::vector<Vec3> origins;
+        std::vector<std::vector<float>> slices;
+        const double c = (n - 1) / 2.0;
+        for (int z = 0; z < n; ++z) {
+            origins.push_back({0.0, 0.0, static_cast<double>(z)});
+            std::vector<float> s(static_cast<std::size_t>(n) * n);
+            for (int y = 0; y < n; ++y) {
+                for (int x = 0; x < n; ++x) {
+                    const double d = std::sqrt((x - c) * (x - c) + (y - c) * (y - c) + (z - c) * (z - c));
+                    s[static_cast<std::size_t>(y * n + x)] = d <= radius ? 900.0F : -1000.0F;
+                }
+            }
+            slices.push_back(s);
+        }
+        return ImageVolume::fromSlices(n, n, {1, 0, 0}, {0, 1, 0}, 1.0, 1.0, origins, slices);
+    }
+
+    static double meanGray(const QImage& img, const QRect& r) {
+        double sum = 0.0;
+        for (int y = r.top(); y <= r.bottom(); ++y) {
+            for (int x = r.left(); x <= r.right(); ++x) {
+                sum += qGray(img.pixel(x, y));
+            }
+        }
+        return sum / (r.width() * r.height());
+    }
+
+    void volumeRenderingWindowShowsPresetsAndCuts() {
+        AppSettings::instance().setRender3dBackend(static_cast<int>(VolumeRenderView::Backend::Cpu));
+        AppSettings::instance().setRender3dQuality(static_cast<int>(VolumeRenderView::Quality::Balanced));
+        auto* w = new VolumeRenderWindow(ballVolume(48, 16.0), QStringLiteral("ball"), QStringLiteral("CT"),
+                                         QStringLiteral("Esfera"));
+        w->resize(1000, 640);
+        w->show();
+        QTRY_VERIFY_WITH_TIMEOUT(w->isReady(), 30000);
+        VolumeRenderView* view = w->view();
+        QVERIFY(!view->usingGpu());
+        QTRY_VERIFY_WITH_TIMEOUT(view->imageFinal(), 60000);
+        QCOMPARE(w->presetKey(), QStringLiteral("ct-bone"));
+        // The ball in the middle, the background around it.
+        QImage shot = view->snapshot();
+        QVERIFY(!shot.isNull());
+        const QPoint mid(shot.width() / 2, shot.height() / 2);
+        QVERIFY(meanGray(shot, QRect(mid - QPoint(4, 4), QSize(8, 8))) > 80.0);
+        QCOMPARE(qGray(shot.pixel(4, 4)), 0);
+        saveShot(w, QStringLiteral("3d-window"));
+        // Every preset of the list draws.
+        auto* list = w->findChild<QListWidget*>();
+        QVERIFY(list != nullptr && list->count() >= 8);
+        for (int i = 0; i < list->count(); ++i) {
+            w->applyPreset(list->item(i)->data(Qt::UserRole).toString());
+            QTRY_VERIFY_WITH_TIMEOUT(view->imageFinal(), 60000);
+        }
+        // MIP of the ball: bright in the middle.
+        w->applyPreset(QStringLiteral("ct-mip"));
+        QTRY_VERIFY_WITH_TIMEOUT(view->imageFinal(), 60000);
+        QCOMPARE(view->settings().mode, RenderMode::Mip);
+        w->applyPreset(QStringLiteral("ct-bone"));
+        QTRY_VERIFY_WITH_TIMEOUT(view->imageFinal(), 60000);
+        // Scissors: the left half of the image removed, then undone.
+        QSignalSpy applied(w, &VolumeRenderWindow::cutsApplied);
+        SculptCut cut;
+        cut.camera = view->camera();
+        cut.width = view->width();
+        cut.height = view->height();
+        cut.polygon = {{0.0, 0.0}, {view->width() / 2.0, 0.0}, {view->width() / 2.0, double(view->height())},
+                       {0.0, double(view->height())}};
+        w->addCut(cut);
+        QTRY_COMPARE_WITH_TIMEOUT(applied.count(), 1, 30000);
+        QCOMPARE(w->cutCount(), 1);
+        QTRY_VERIFY_WITH_TIMEOUT(view->imageFinal(), 60000);
+        shot = view->snapshot();
+        const int y = shot.height() / 2;
+        QVERIFY(meanGray(shot, QRect(shot.width() / 2 - 30, y - 2, 8, 4)) < 5.0);   // removed
+        QVERIFY(meanGray(shot, QRect(shot.width() / 2 + 22, y - 2, 8, 4)) > 40.0);  // kept
+        w->undoCut();  // back to the original volume (no computation needed)
+        QTRY_COMPARE_WITH_TIMEOUT(applied.count(), 2, 30000);
+        QCOMPARE(w->cutCount(), 0);
+        // Interaction: rotate and zoom with the mouse, then the final image.
+        QTest::mousePress(view, Qt::LeftButton, Qt::NoModifier, QPoint(100, 100));
+        QTest::mouseMove(view, QPoint(160, 120));
+        QTest::mouseRelease(view, Qt::LeftButton, Qt::NoModifier, QPoint(160, 120));
+        QTRY_VERIFY_WITH_TIMEOUT(view->imageFinal(), 60000);
+        QVERIFY(!view->rendererDescription().isEmpty());
+        delete w;
+        AppSettings::instance().setRender3dBackend(0);
+        AppSettings::instance().setRender3dQuality(0);
+    }
+
+    void graphicsCardMatchesTheProcessor() {
+        const GpuCapabilities caps = GpuRayCaster::capabilities();
+        if (!caps.usable) {
+            // CI runs this test on a virtual display with Mesa, where it must work
+            // (without a display there is no OpenGL to require).
+            QVERIFY2(qEnvironmentVariableIsEmpty("VISUALTC_REQUIRE_GPU") || qEnvironmentVariableIsEmpty("DISPLAY"),
+                     qPrintable(caps.reason));
+            QSKIP(qPrintable(QStringLiteral("Sem OpenGL 3.3 neste ambiente: ") + caps.reason));
+        }
+        qInfo("Placa de vídeo: %s (OpenGL %s)", qPrintable(caps.renderer), qPrintable(caps.version));
+        const VolumePtr src = ballVolume(40, 13.0);
+        const auto built = RenderVolume::fromImageVolume(*src, 1ULL << 30);
+        QVERIFY(built.volume);
+        const RenderVolumePtr vol = built.volume;
+        GpuRayCaster gpu;
+        QString error;
+        QVERIFY2(gpu.initialize(&error), qPrintable(error));
+        QVERIFY2(gpu.setVolume(vol, 1ULL << 30, &error) == vol, qPrintable(error));
+        for (const char* key : {"ct-bone", "ct-soft", "ct-mip", "ct-xray", "ct-bone-surface"}) {
+            const RenderPreset* p = findRenderPreset(key);
+            const ResolvedPreset rp = resolvePreset(*p, *vol);
+            RenderSettings s;
+            s.mode = p->mode;
+            s.shading = p->shading;
+            s.windowCenter = rp.windowCenter;
+            s.windowWidth = rp.windowWidth;
+            s.surfaceValue = rp.surfaceValue;
+            s.surfaceColor = p->surfaceColor;
+            const TransferLut lut = buildTransferLut(rp.tf, *vol, s.stepMm(vol->minSpacing()));
+            Camera3D cam;
+            cam.setView(ViewDirection::Left);
+            cam.fit(*vol, 96, 96);
+            cam.rotate(0.4, 0.3);
+            QImage onCard;
+            QVERIFY2(gpu.render(lut, cam, s, 96, 96, &onCard, &error), qPrintable(error));
+            QImage onCpu(96, 96, QImage::Format_RGB32);
+            QVERIFY(CpuRayCaster::render(*vol, lut, cam, s, 96, 96, reinterpret_cast<std::uint32_t*>(onCpu.bits())));
+            double diff = 0.0;
+            for (int yy = 0; yy < 96; ++yy) {
+                for (int xx = 0; xx < 96; ++xx) {
+                    diff += std::abs(qGray(onCard.pixel(xx, yy)) - qGray(onCpu.pixel(xx, yy)));
+                }
+            }
+            QVERIFY2(diff / (96.0 * 96.0) < 2.0, key);
+        }
+    }
+
+    void mainWindowOpens3DForTheActiveSeries() {
+        QStandardPaths::setTestModeEnabled(true);
+        AppSettings::instance().setRender3dBackend(static_cast<int>(VolumeRenderView::Backend::Cpu));
+        auto* window = new MainWindow;
+        QString why;
+        QVERIFY2(openWindowWith(window, tmp_.path(), &why) != nullptr, qPrintable(why));
+        auto* grid = window->findChild<ViewerGrid*>();
+        grid->setLayoutGrid(1, 1);
+        QAction* open3d = actionWithShortcut(window, QKeySequence(QStringLiteral("Ctrl+D")));
+        QVERIFY(open3d != nullptr);
+        QTRY_VERIFY(open3d->isEnabled());
+        open3d->trigger();
+        QPointer<VolumeRenderWindow> w;
+        QTRY_VERIFY_WITH_TIMEOUT((w = window->findChild<VolumeRenderWindow*>()) != nullptr, 60000);
+        QTRY_VERIFY_WITH_TIMEOUT(w->isReady(), 60000);
+        QVERIFY(w->isVisible());
+        // Again: the same window comes forward, no second one.
+        open3d->trigger();
+        QCoreApplication::processEvents();
+        QCOMPARE(window->findChildren<VolumeRenderWindow*>().size(), qsizetype(1));
+        // Closing the exams closes its 3D window.
+        for (auto* a : window->findChildren<QAction*>()) {
+            if (a->text() == QStringLiteral("Fechar estudos")) {
+                a->trigger();
+            }
+        }
+        QTRY_VERIFY(w.isNull());
+        delete window;
+        AppSettings::instance().setRender3dBackend(0);
+    }
+
     void spanishAndEnglishTranslations() {
         QCOMPARE(languageFromKey(QStringLiteral("es")), Language::Spanish);
         QCOMPARE(languageKey(Language::English), QStringLiteral("en"));

@@ -14,14 +14,19 @@ Os demais arquivos abaixo (código-fonte, `SHA256SUMS.txt`) não são necessári
 
 ### Novidades desta versão
 
-- **Idiomas**: português, espanhol e inglês (Preferências › Interface).
-- **Cor de destaque** à escolha: azul, sépia, amarelo, dourado, verde neon ou laranja (Exibir › Cor de destaque).
-- **Botão Plano**: alterna a série aberta entre axial, sagital e coronal.
-- **Fechar um estudo** pelo **×** ao lado do nome do paciente, sem fechar o programa.
-- **MPR**: o menu de espessura (MIP/MinIP) foi corrigido e o botão **Cruz** mostra/oculta as linhas.
-- Layout **1 × 3**; botão **Cortes** agora se chama **Rolar**; botões Capturar e Reset saíram da barra (continuam
-  nos menus Arquivo e Exibir).
-- **Sobre o VisualTC**: criado por Dr Marcelo Duarte — Brasil; uso destinado a estudos e pesquisas.
+- **Reconstrução 3D** (botão **3D** na barra ou **Ctrl+D**), como nas estações de trabalho:
+  - modos **Volume (VR)**, **Superfície**, **MIP**, **MinIP** e **Raio-X simulado**;
+  - predefinições com miniatura do próprio exame — ossos, vasos (angio), partes moles e ossos, músculos, pele,
+    pulmões, vias aéreas e as de ressonância — e as suas, salvas para usar em outros exames;
+  - editor de cores e opacidade sobre o histograma, e **Ctrl + arrastar** na imagem para ajustar como
+    janela/nível;
+  - **caixa de recorte**, **tesoura 3D** (remover dentro ou fora do contorno, desfazer), vistas anterior,
+    posterior, laterais, superior e inferior, cubo de orientação, perspectiva e **giro de 360°**;
+  - salvar a imagem (PNG/JPEG), copiar e exportar o giro como sequência de imagens.
+- **Funciona em qualquer computador**: usa a **placa de vídeo** (OpenGL 3.3) quando ela existe e, nos
+  computadores antigos ou sem placa adequada, o **processador**, com imagem mais leve enquanto o volume gira.
+  A escolha é automática (pode ser trocada em **Desempenho**), e se a placa falhar o programa passa sozinho
+  para o processador.
 
 ### Apareceu um aviso na primeira vez?
 

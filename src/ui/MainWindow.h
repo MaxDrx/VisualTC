@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QMainWindow>
+#include <QPointer>
 #include <QStringList>
 #include <atomic>
 #include <functional>
@@ -50,6 +51,7 @@ struct AutomationOptions {
     QString demoMeasurements;  // "1" to draw demo measurements
     int slab = 0;
     QString preset;
+    QString view3d;  // preset of the 3D reconstruction to open
 };
 
 class MainWindow : public QMainWindow {
@@ -97,6 +99,7 @@ private:
     SeriesPtr seriesIn(Viewport* vp, std::optional<MprOrientation>* plane) const;
     void showPlane(MprOrientation o);
     void cyclePlane();
+    void open3D();
     void createMprActions();
     void populateMprMenu(QMenu* m);
     void setAccent(Accent a);
@@ -179,9 +182,11 @@ private:
     QAction* actResetPlanes_ = nullptr;
     QAction* actCrosshairLines_ = nullptr;
     QAction* actPlane_ = nullptr;
+    QAction* act3D_ = nullptr;
     QActionGroup* planeGroup_ = nullptr;
     std::map<int, QAction*> planeActions_;
     QToolButton* planeBtn_ = nullptr;
+    QList<QPointer<QWidget>> windows3d_;  // open 3D reconstructions (one per series)
     QActionGroup* accentGroup_ = nullptr;
     std::optional<std::pair<double, int>> pendingSlab_;  // MIP/thickness chosen before the MPR opened
     struct {

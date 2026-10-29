@@ -53,6 +53,8 @@
 #include "ui/SeriesBrowser.h"
 #include "ui/SeriesDock.h"
 #include "ui/ViewerGrid.h"
+#include "view3d/VolumeRenderView.h"
+#include "view3d/VolumeRenderWindow.h"
 #include "viewer2d/AnnotationStore.h"
 #include "viewer2d/StackSource.h"
 
@@ -352,6 +354,8 @@ void MainWindow::createActions() {
     }
     actPlane_ = make(tr("Plano"), "plane", QKeySequence(tr("Ctrl+Shift+P")), [this] { cyclePlane(); },
                      tr("Mudar o plano da série ativa: axial → sagital → coronal"));
+    act3D_ = make(tr("Reconstrução 3D"), "volume3d", QKeySequence(tr("Ctrl+D")), [this] { open3D(); },
+                  tr("Reconstrução 3D da série ativa (volume, superfície, MIP), na placa de vídeo ou no processador"));
     actCine_ = make(tr("Cine"), "cine", QKeySequence(tr("Space")), [this] {
         if (auto* vp = grid_->activeViewport()) {
             vp->setCinePlaying(!vp->cinePlaying());
@@ -457,6 +461,8 @@ void MainWindow::createMenus() {
     for (Tool t : {Tool::WindowLevel, Tool::Pan, Tool::Zoom, Tool::Scroll, Tool::Probe, Tool::Crosshair}) {
         tools->addAction(toolActions_[t]);
     }
+    tools->addSeparator();
+    tools->addAction(act3D_);
 
     auto* image = menuBar()->addMenu(tr("&Imagem"));
     presetMenu_ = image->addMenu(Icons::get("window-level"), tr("Presets de janela"));
@@ -651,6 +657,8 @@ void MainWindow::createToolbar() {
     planeBtn_->setPopupMode(QToolButton::MenuButtonPopup);
     planeBtn_->setToolButtonStyle(Qt::ToolButtonTextUnderIcon);
     tb->addWidget(planeBtn_);
+    act3D_->setIconText(tr("3D"));
+    tb->addAction(act3D_);
     tb->addSeparator();
     actRotCw_->setIconText(tr("Girar"));
     actFlipH_->setIconText(tr("Espelhar"));
@@ -701,7 +709,7 @@ void MainWindow::createToolbar() {
     };
     for (QObject* o : std::initializer_list<QObject*>{
              prefs, actExport_, actCine_, actOverlays_, actRefLines_, actSync_, lutBtn, actInvert_, actFlipH_,
-             actRotCw_, actStudies_, actOpenFolder_, actOpenFiles_, layoutBtn, planeBtn_, actCrosshairLines_,
+             actRotCw_, actStudies_, actOpenFolder_, actOpenFiles_, layoutBtn, planeBtn_, act3D_, actCrosshairLines_,
              mprBtn, toolActions_[Tool::Probe], toolActions_[Tool::Scroll], toolActions_[Tool::Pan],
              toolActions_[Tool::Zoom]}) {
         add(o);
@@ -992,6 +1000,12 @@ void MainWindow::closeStudies() {
     volumeCache_ = {};
     reformatSession_.reset();
     pendingSlab_.reset();
+    for (const auto& w : windows3d_) {
+        if (w) {
+            w->close();  // the 3D views of closed exams go with them
+        }
+    }
+    windows3d_.clear();
     infoLabel_->clear();
     updateActionStates();
 }
@@ -1031,6 +1045,11 @@ void MainWindow::closeStudy(const QString& patientKey, const QString& studyKey) 
     }
     if (reformatSession_ && reformatSession_->series() && seriesIds.count(reformatSession_->series()->id)) {
         reformatSession_.reset();
+    }
+    for (const auto& w : windows3d_) {
+        if (auto* win = qobject_cast<VolumeRenderWindow*>(w.data()); win && seriesIds.count(win->seriesId().toStdString())) {
+            win->close();
+        }
     }
     // Images extracted from a compressed exam are deleted with it.
     const std::vector<InstancePtr> removed = db_.removeStudy(patientKey.toStdString(), studyKey.toStdString());
@@ -1447,6 +1466,45 @@ void MainWindow::cyclePlane() {
     }
 }
 
+void MainWindow::open3D() {
+    const SeriesPtr series = seriesIn(grid_->activeViewport(), nullptr);
+    if (!series) {
+        statusBar()->showMessage(tr("Abra uma série volumétrica (TC ou RM) para a reconstrução 3D."), 6000);
+        return;
+    }
+    if (!checkVolumetric(series, tr("Reconstrução 3D"))) {
+        return;
+    }
+    const QString id = QString::fromStdString(series->id);
+    windows3d_.removeAll(QPointer<QWidget>());
+    for (const auto& w : windows3d_) {
+        if (auto* win = qobject_cast<VolumeRenderWindow*>(w.data()); win && win->seriesId() == id) {
+            win->showNormal();
+            win->raise();
+            win->activateWindow();
+            return;
+        }
+    }
+    if (series->geometry.has(GeometryIssue::MissingSlices)) {
+        statusBar()->showMessage(trCore(describe(GeometryIssue::MissingSlices)), 10000);
+    }
+    buildVolume(series, [this, series, id](const VolumePtr& volume, const QString& error) {
+        if (!volume) {
+            if (!error.isEmpty()) {
+                QMessageBox::warning(this, tr("Reconstrução 3D"), error);
+            }
+            return;
+        }
+        if (!db_.findSeries(series->id)) {
+            return;  // the exam was closed meanwhile
+        }
+        auto* w = new VolumeRenderWindow(volume, id, QString::fromStdString(series->modality()),
+                                         seriesDescription(*series), this);
+        windows3d_.append(w);
+        w->show();
+    });
+}
+
 void MainWindow::createMprActions() {
     auto* modeGroup = new QActionGroup(this);
     const std::vector<std::pair<QString, SlabMode>> modes = {{tr("MIP (intensidade máxima)"), SlabMode::MIP},
@@ -1771,6 +1829,7 @@ void MainWindow::updateActionStates() {
     const bool inMprLayout = grid_->mprSession() && mprOf(vp) != nullptr &&
                              mprOf(vp)->session() == grid_->mprSession();
     actPlane_->setEnabled(shown != nullptr && shown->geometry.volumetric && !inMprLayout);
+    act3D_->setEnabled(shown != nullptr);
     for (auto& [o, a] : planeActions_) {
         a->setEnabled(actPlane_->isEnabled());
         a->setChecked(plane && static_cast<int>(*plane) == o);
@@ -1903,10 +1962,13 @@ void MainWindow::showShortcuts() {
         "<tr><td><b>↑ ↓ PgUp PgDn</b></td><td>Rolar cortes</td><td><b>Home/End</b></td><td>Primeiro/último</td></tr>"
         "<tr><td><b>Ctrl+Z</b></td><td>Desfazer</td><td><b>Delete</b></td><td>Excluir medida</td></tr>"
         "<tr><td><b>Ctrl+E</b></td><td>Exportar</td><td><b>Ctrl+Shift+C</b></td><td>Copiar imagem</td></tr>"
-        "<tr><td><b>Ctrl+Shift+H</b></td><td>Histograma da ROI</td><td></td><td></td></tr>"
+        "<tr><td><b>Ctrl+Shift+H</b></td><td>Histograma da ROI</td><td><b>Ctrl+D</b></td>"
+        "<td>Reconstrução 3D</td></tr>"
         "</table>"
         "<p>Mouse: roda rola os cortes · Ctrl+roda zoom · botão do meio pan · botão direito zoom · "
         "Shift+arrastar pan · duplo clique maximiza/restaura.</p>"
+        "<p>3D: arrastar gira · roda ou botão direito zoom · botão do meio move · Ctrl+arrastar ajusta as "
+        "cores · setas giram 5° · Home restaura a vista.</p>"
         "<p>MPR: arraste a <b>linha colorida</b> para mover aquele plano, a <b>bolinha</b> na ponta para girar "
         "(oblíquo), a <b>barrinha</b> ao lado para dar espessura (MIP/MinIP) e o <b>círculo central</b> para "
         "mover o cruzamento.</p>");
@@ -1990,12 +2052,39 @@ void MainWindow::runAutomationStep() {
                     startMpr(QString::fromStdString(best->id));
                 }
             }
+            if (!automation_.view3d.isEmpty()) {
+                SeriesPtr best;
+                for (const auto& s : db_.allSeries()) {
+                    if (s->geometry.volumetric && (!best || s->frameCount() > best->frameCount())) {
+                        best = s;
+                    }
+                }
+                if (best) {
+                    openSeries(QString::fromStdString(best->id), grid_->activeViewport());
+                    open3D();
+                }
+            }
             automationStage_ = 2;
             break;
         }
         case 2:
             if (mprBuilding_ || frames_->pendingCount() > 0) {
                 break;  // wait
+            }
+            if (!automation_.view3d.isEmpty()) {
+                auto* w = windows3d_.isEmpty() ? nullptr : qobject_cast<VolumeRenderWindow*>(windows3d_.back().data());
+                if (w == nullptr || !w->isReady() || w->busy()) {
+                    break;  // wait for the volume
+                }
+                if (!w->property("automationPosed").toBool()) {
+                    w->setProperty("automationPosed", true);
+                    w->applyPreset(automation_.view3d);
+                    w->view()->rotateBy(-28.0, 14.0);
+                    break;
+                }
+                if (!w->view()->imageFinal()) {
+                    break;  // wait for the image at full quality
+                }
             }
             if (automation_.slab > 0) {
                 setSlab(automation_.slab, 1);
@@ -2035,7 +2124,11 @@ void MainWindow::runAutomationStep() {
             QTimer::singleShot(900, this, &MainWindow::runAutomationStep);
             return;
         case 3: {
-            const QPixmap shot = grab();
+            QWidget* target = this;
+            if (!automation_.view3d.isEmpty() && !windows3d_.isEmpty() && windows3d_.back()) {
+                target = windows3d_.back().data();
+            }
+            const QPixmap shot = target->grab();
             const bool ok = shot.save(automation_.screenshot);
             logInfo("automation", ok ? "Captura de tela salva." : "Falha ao salvar captura de tela.");
             automationStage_ = 4;

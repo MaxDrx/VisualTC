@@ -1,6 +1,6 @@
-# Guia do usuário — VisualTC 0.4.0
+# Guia do usuário — VisualTC 0.5.0
 
-> O VisualTC 0.4.0 é destinado a **estudos e pesquisas** e não é um
+> O VisualTC 0.5.0 é destinado a **estudos e pesquisas** e não é um
 > dispositivo médico registrado. Confira medidas e reconstruções antes de
 > qualquer uso diagnóstico. Criado por Dr Marcelo Duarte — Brasil.
 
@@ -244,7 +244,81 @@ calibração, as medidas são mostradas em **pixels** e o aviso
   dos cortes; regiões de cortes ausentes ficam pretas (nunca interpoladas).
 - Clique em **MPR** novamente para voltar à visualização 2D.
 
-## 9. Exportar e copiar
+## 9. Reconstrução 3D
+
+![Reconstrução 3D](screenshots/3d.png)
+
+- **3D** (botão na barra, **Ctrl+D** ou **Ferramentas › Reconstrução 3D**)
+  abre a reconstrução da série do viewport ativo numa janela própria. Vale
+  para as mesmas séries do MPR (cortes paralelos e coerentes); o volume já
+  montado para o MPR ou para o botão Plano é reaproveitado. Cada série tem
+  uma janela; clicar de novo traz a janela da frente.
+- **Predefinições** com miniatura do próprio exame:
+
+  | TC | RM e outras modalidades |
+  |---|---|
+  | Ossos · Vasos (angio) · Partes moles e ossos · Músculos · Pele · Pulmões · Vias aéreas (MinIP) · MIP · Raio-X simulado · Superfície óssea | Tecidos (RM) · Vasos (angio RM) · MIP · Padrão |
+
+  Na RM, que não tem escala absoluta como as unidades Hounsfield, as
+  predefinições se ajustam à faixa de intensidades da série.
+- **Modos**: **Volume (VR)** (cores e opacidades somadas ao longo do raio),
+  **Superfície** (primeiro ponto acima de um limiar, com cor escolhida),
+  **MIP**, **MinIP** e **Média — raio-X simulado** (com janela e nível).
+- **Cores e opacidade**: o gráfico mostra o histograma do volume e a curva
+  de opacidade. Arraste um ponto para movê-lo; clique duplo em área vazia
+  acrescenta um ponto; clique duplo num ponto muda a cor; o botão direito
+  remove. **Opacidade** multiplica toda a curva. Na imagem, **Ctrl +
+  arrastar** (ou a ferramenta **Janela**) desloca as cores para os lados e
+  estreita/alarga as rampas, como janela/nível. **Salvar como
+  predefinição…** guarda o ajuste para usar em outros exames (botão direito
+  sobre a miniatura para excluir).
+- **Mouse**: arrastar gira o volume; roda ou botão direito, zoom; botão do
+  meio (ou Shift + arrastar), move a imagem. Setas giram 5°, **Home**
+  restaura a vista. **Iluminação** liga o sombreamento e **Perspectiva** a
+  projeção em perspectiva; o fundo pode ser preto, cinza ou branco.
+- **Vistas**: Anterior, Posterior, Direita, Esquerda, Superior e Inferior,
+  além de giros de 90° e 180°. O **cubo de orientação** no canto mostra as
+  letras do paciente (L/R, A/P, H/F), como nas imagens 2D. **Girar 360°**
+  liga a rotação contínua.
+- **Recorte (caixa)**: as três barras com duas alças limitam o volume em
+  cada direção (letras nas pontas); ao arrastar, a caixa aparece na imagem.
+- **Tesoura 3D**: escolha **Remover dentro** ou **Remover fora** e contorne
+  a região sobre a imagem; o corte atravessa todo o volume na direção da
+  vista (para tirar a mesa, uma costela, o crânio de um lado…). **Desfazer
+  corte** volta um passo; **Restaurar volume** desfaz todos. Os arquivos do
+  exame nunca são alterados.
+- **Salvar imagem** (Ctrl+S) em PNG ou JPEG, **Copiar imagem** (Ctrl+C) e
+  **Exportar giro** (uma volta completa em imagens PNG numeradas, para montar
+  um vídeo ou uma apresentação). As imagens não levam a identificação do
+  paciente.
+
+### Placa de vídeo ou processador
+
+O VisualTC tem dois motores 3D que produzem a mesma imagem:
+
+- **Placa de vídeo (GPU)**, quando o computador oferece OpenGL 3.3 ou mais
+  recente (a maioria das placas de vídeo e dos vídeos integrados dos últimos
+  dez anos, inclusive os Macs). Rotação fluida mesmo em volumes grandes.
+- **Processador (CPU)**, para computadores antigos ou sem placa adequada:
+  usa todos os núcleos, pula as regiões vazias do volume e para cada raio
+  assim que a imagem fica opaca. Enquanto o volume gira, desenha uma imagem
+  menor e um volume reduzido; quando o mouse para, refina a imagem (aviso
+  "Refinando a imagem…" no canto).
+
+Em **Desempenho**, **Renderização** fica em *Automático* (placa de vídeo
+quando ela serve; senão, processador) e pode ser forçada. **Qualidade**
+escolhe a resolução do volume e a finura da amostragem: *Leve
+(computadores antigos)*, *Equilibrada* ou *Máxima*; *Automática* decide
+pela memória e pelo tipo de renderização. A barra de status mostra quem
+está desenhando, o tamanho do volume e o tempo da última imagem.
+
+Se a placa de vídeo falhar (driver com defeito, memória de vídeo
+insuficiente), o VisualTC passa sozinho para o processador. Se o driver
+chegar a fechar o programa durante o teste inicial da placa, na próxima vez
+o 3D já abre no processador; escolher **Placa de vídeo (GPU)** tenta de
+novo.
+
+## 10. Exportar e copiar
 
 - **Exportar imagem** (Ctrl+E): PNG, JPEG ou TIFF do viewport ativo, com
   opções de incluir medidas/textos e de **ocultar a identificação do
@@ -253,13 +327,13 @@ calibração, as medidas são mostradas em **pixels** e o aviso
   para a área de transferência.
 - **Informações DICOM** (Ctrl+I): principais atributos da imagem atual.
 
-## 10. Preferências
+## 11. Preferências
 
 | Aba | Opções |
 |---|---|
 | Interface | **idioma** (português, espanhol ou inglês; vale ao reiniciar — o VisualTC oferece reiniciar na hora), **cor de destaque**, tema escuro/claro, tamanho da fonte |
 | Mouse | ação dos botões esquerdo, do meio e direito |
-| Desempenho | tamanho do cache, pré-carregamento da série, threads, interpolação, decodificação isolada, qualidade do MPR |
+| Desempenho | tamanho do cache, pré-carregamento da série, threads, interpolação, decodificação isolada, qualidade do MPR (a renderização e a qualidade do 3D ficam na própria janela 3D e são lembradas) |
 | DICOM | textos sobre a imagem, linhas de referência, sincronização de zoom/pan e janela, presets personalizados |
 
 **Cor de destaque**: a cor dos botões ativos da barra, da seleção e do nome
@@ -271,7 +345,7 @@ espanhol ou, para os demais, inglês); quem já usava uma versão anterior
 continua em português. Os números seguem o idioma (vírgula decimal em
 português e espanhol).
 
-## 11. Atalhos
+## 12. Atalhos
 
 | Tecla | Função | Tecla | Função |
 |---|---|---|---|
@@ -292,6 +366,7 @@ português e espanhol).
 | 1–8 | Presets de TC | Ctrl+0 | Reset |
 | Ctrl+E | Exportar | Ctrl+Shift+C | Copiar imagem |
 | Ctrl+Shift+H | Histograma da ROI | Ctrl+I | Informações DICOM |
+| Ctrl+D | Reconstrução 3D | Ctrl+S / Ctrl+C (3D) | Salvar / copiar a imagem 3D |
 | Ctrl+Z | Desfazer | Delete | Apagar medida |
 | Esc | Cancelar / ferramenta padrão | Tab | Próximo viewport |
 
@@ -299,7 +374,7 @@ A lista também está em **Ajuda › Atalhos de teclado**. Em telas estreitas
 (notebook de 13"), os botões menos usados da barra mostram só o ícone; o
 nome aparece ao parar o mouse sobre eles.
 
-## 12. Privacidade e log
+## 13. Privacidade e log
 
 O VisualTC não acessa a internet. O log técnico (`visualtc.log`, local
 indicado em **Ajuda › Local do arquivo de log**) não contém nomes, IDs,

@@ -16,6 +16,8 @@ O VisualTC é dividido em três camadas com dependências em um único sentido:
 │  viewer2d/  Viewport (render, ferramentas, overlays), ImageSource,       │
 │             StackSource, Annotations + AnnotationStore (undo/redo)       │
 │  mpr/  MprSession, MprSource (ImageSource de planos reconstruídos)       │
+│  view3d/ VolumeRenderWindow, VolumeRenderView (progressivo, mouse),      │
+│          GpuRayCaster (OpenGL 3.3, shader), TransferFunctionEditor        │
 │  io/   ImportTask, FrameProvider (fila priorizada), ThumbnailProvider,   │
 │        DecoderClient ──────────────┐                                     │
 │  export/ ImageExporter             │ pipes (protocolo binário validado)  │
@@ -35,6 +37,9 @@ O VisualTC é dividido em três camadas com dependências em um único sentido:
 │  measurements/ MeasurementMath (mm, graus, Cobb), RoiStatistics (HU)     │
 │  mpr/  ImageVolume (origem por corte), Reslicer (fino, MIP/MinIP/média), │
 │        MprGeometry (eixos anatômicos, planos)                            │
+│  render3d/ RenderVolume (grade regular 16 bits + blocos 8³), Transfer-   │
+│        Function (predefinições, tabela 4096), Camera3D, CpuRayCaster,    │
+│        Sculpt (tesoura 3D)                                               │
 │  synchronization/ SpatialSync (FoR, plano mais próximo, reference lines) │
 │  core/ Logger (sem PHI), SystemInfo, Parallel, Vec3, PathUtil            │
 └──────────────────────────────────────────────────────────────────────────┘
@@ -158,6 +163,68 @@ interrompido) são apagadas na próxima abertura.
   normal é a mais próxima (não o mesmo índice). Reference lines: interseção
   do retângulo do plano de origem com o plano de destino.
 
+### Reconstrução 3D (0.5.0)
+
+Motor próprio, sem VTK, com **dois renderizadores que seguem as mesmas
+regras** e produzem a mesma imagem (diferença média < 2 níveis de cinza no
+teste `graphicsCardMatchesTheProcessor`):
+
+1. **RenderVolume** (núcleo, sem Qt): o `ImageVolume` do MPR é reamostrado
+   numa grade regular ao longo da normal — gantry tilt e espaçamento
+   irregular resolvidos aqui, **lacunas de cortes ausentes ficam vazias**
+   (nunca interpoladas). Valores quantizados em 16 bits sobre a faixa da
+   série (TC: a partir de −1024 HU); o valor 0 é "vazio" (fora do exame,
+   lacuna, cortes da tesoura). Para caber num orçamento de voxels (memória
+   de computadores antigos, textura da placa), as direções mais finas são
+   reduzidas primeiro, com filtro de caixa. Blocos de 8³ guardam mínimo e
+   máximo (com um voxel de sobreposição, o que a interpolação trilinear lê)
+   e um histograma de 4096 classes alimenta o editor e as predefinições de RM.
+2. **TransferFunction**: pontos (valor → cor, opacidade por mm) e a
+   **TransferLut** de 4096 entradas com a opacidade corrigida para a
+   distância de amostragem (`1 − (1 − α)^(passo/1 mm)`), de modo que a imagem
+   não muda com a resolução. A contagem acumulada de entradas opacas diz em
+   O(1) se um bloco pode aparecer (**pular espaço vazio**).
+3. **Camera3D**: ortográfica ou perspectiva, em coordenadas do paciente
+   (LPS); vistas padrão com a convenção radiológica (vista anterior: direita
+   do paciente à esquerda da imagem).
+4. **CpuRayCaster**: um raio por pixel em blocos de 16×16 distribuídos entre
+   todos os núcleos; salta blocos vazios até a saída do bloco (mantendo a
+   grade de amostras), encerra o raio quando a opacidade passa de 99 %,
+   calcula o gradiente (diferenças centrais, 6 leituras) só onde a amostra
+   contribui, sombreamento Phong com luz no observador, deslocamento
+   aleatório fixo por pixel contra anéis de amostragem. Modos volume,
+   superfície (com refinamento do cruzamento por bissecção), MIP (pulando
+   blocos abaixo do máximo atual), MinIP e média.
+5. **GpuRayCaster** (Qt OpenGL): o mesmo algoritmo num *fragment shader*
+   GLSL 3.30 — volume em textura 3D R16, tabela em textura RGBA32F, blocos
+   em texturas 3D. Desenha num framebuffer fora da tela e lê a imagem: a
+   janela é um `QWidget` comum (nada de `QOpenGLWidget`), então o driver
+   nunca toca na composição das janelas e o mesmo widget mostra os dois
+   motores. A imagem é desenhada em faixas de ~130 mil pixels (trabalhos curtos,
+   sem estourar o tempo-limite dos drivers do Windows). Falta de memória de
+   vídeo: tenta de novo com metade dos voxels.
+
+**Escolha do motor** (`VolumeRenderView`): no modo automático, testa a placa
+uma vez (contexto 3.3 core, compila o shader, desenha uma esfera e confere
+o resultado); com OpenGL ausente, antigo, emulado (llvmpipe, "GDI
+Generic", "Basic Render") ou com falha, usa o processador. Antes do teste
+uma marca é gravada nas preferências: se o driver derrubar o programa, na
+próxima vez o 3D abre direto no processador. Qualquer erro da placa durante
+o uso também passa para o processador, sem perder o estado.
+
+**Fluidez**: com a placa, a escala da imagem durante a interação se adapta
+ao tempo de cada quadro; com o processador, enquanto o mouse se move é
+desenhada uma imagem de ~90–300 mil pixels sobre uma cópia reduzida do
+volume (montada em segundo plano) e, 220 ms depois do último movimento, a
+imagem final em duas passagens (metade e inteira), canceláveis. Os
+trabalhos do processador rodam em `QtConcurrent`; a interface nunca espera.
+
+**Tesoura 3D**: o contorno é rasterizado em pixels da tela e cada voxel é
+projetado com a câmera do momento do corte; o volume cortado é uma cópia
+(o original fica intacto), recalculada a partir do original a cada
+desfazer. Os blocos são recalculados, então o salto de espaço vazio segue
+os cortes.
+
 ### Concorrência
 
 | Thread | Função |
@@ -166,7 +233,8 @@ interrompido) são apagadas na próxima abertura.
 | ImportTask | varredura e parse (2–4 workers em paralelo) |
 | FrameProvider (N = núcleos − 1, entre 2 e 6; ajustável) | decodificação priorizada, cada uma com seu worker |
 | Construção de volume MPR | `std::thread` com barra de progresso e cancelamento |
-| `parallelFor` | reslice MPR e estatísticas pesadas |
+| `parallelFor` | reslice MPR, reamostragem 3D, tesoura e estatísticas pesadas |
+| Reconstrução 3D | `QtConcurrent` (volume, miniaturas das predefinições, cortes, imagens do processador, que se dividem em uma thread por núcleo); a placa de vídeo desenha na thread da interface |
 
 Objetos DICOM são imutáveis depois de criados (`shared_ptr<const ...>`);
 a UI só recebe resultados prontos via sinais em fila. Encerramento: a
@@ -208,6 +276,7 @@ modo binário somente leitura).
 | Interface | Qt 6.8 LTS Widgets | nativo nos 3 SOs, HiDPI, multimonitor, maduro, LGPL | Qt Quick (menos adequado para ferramentas densas de estação de trabalho) |
 | DICOM principal | **GDCM 3.0.24** | leitura tolerante de arquivos reais, todos os codecs necessários embutidos (IJG 8/12/16, OpenJPEG, CharLS, RLE), licença BSD, build estático simples | DCMTK: excelente para rede/PACS, mas JPEG 2000 não é livre (só via módulo comercial/externo) e o build com todos os codecs é mais pesado. Fica reservado para a fase PACS (C-FIND/C-MOVE/C-STORE). |
 | 2D e MPR | pipeline próprio em CPU (double na geometria) | controle total da geometria (tilt, espaçamento irregular, lacunas) e testes exatos; leve, sem OpenGL | VTK `vtkImageReslice`: assume grade regular e exigiria reamostrar antes, escondendo lacunas |
+| 3D | motor próprio: ray casting no processador (C++, núcleo) e na placa de vídeo (OpenGL 3.3 pelo módulo Qt OpenGL) | leve (nenhuma biblioteca nova), funciona em qualquer computador, mesma imagem nos dois caminhos, testes exatos no núcleo | VTK (`vtkGPUVolumeRayCastMapper`): dezenas de MB a mais, exige OpenGL para a renderização interativa e foi justamente o que levou à retirada do 3D na 0.3.0 |
 | Processamento avançado (fase 3+) | ITK 5.4, se necessário | filtros/segmentação; não é dependência do MVP | — |
 | Build | CMake ≥ 3.21 + presets + vcpkg (baseline fixa) | reprodutível nos 3 SOs e no CI | Conan (equivalente; vcpkg tem GDCM com codecs prontos) |
 | Testes | Catch2 3.7.1 (núcleo) + QtTest (UI offscreen) | rápidos, sem dependências extras | GoogleTest |
@@ -225,6 +294,8 @@ VisualTC/
 │   ├── imaging/       DecodedFrame, VOI/LUT, orientação, cache LRU
 │   ├── measurements/  matemática de medidas e estatísticas de ROI
 │   ├── mpr/           volume, reslicer, geometria MPR (+ MprSession/MprSource na UI)
+│   ├── render3d/      volume 3D, funções de transferência, câmera, ray casting no processador, tesoura
+│   ├── view3d/        janela 3D, renderização na placa de vídeo, editor de cores, recorte
 │   ├── synchronization/ sincronização espacial e reference lines
 │   ├── worker/        visualtc-worker
 │   ├── io/            DecoderClient, FrameProvider, ImportTask, ExtractionArea, miniaturas
@@ -233,7 +304,7 @@ VisualTC/
 │   ├── export/        PNG/JPEG/TIFF
 │   └── app/           main, tema, preferências
 ├── tests/  unit/ (Catch2), ui/ (QtTest), fixtures/ (gerador DICOM sintético)
-├── tools/  make_phantom (exame sintético), vtc_bench (desempenho), fundo do DMG
+├── tools/  make_phantom (exame sintético), vtc_bench e vtc_render3d (desempenho), fundo do DMG
 ├── resources/icons/   ícones SVG originais
 ├── packaging/         scripts e arquivos dos pacotes: linux (.deb + AppImage), macos (DMG universal),
 │                      windows (instalador Inno Setup), notas de versão
@@ -247,7 +318,7 @@ VisualTC/
 
 | Dependência | Versão | Licença | Uso |
 |---|---|---|---|
-| Qt (qtbase, qtsvg, qtimageformats) | 6.8.3 LTS | LGPL-3.0 (link dinâmico) | interface |
+| Qt (qtbase com QtOpenGL, qtsvg, qtimageformats) | 6.8.3 LTS | LGPL-3.0 (link dinâmico) | interface; 3D na placa de vídeo (opcional na compilação) |
 | GDCM | 3.0.24 | BSD-3-Clause | leitura DICOM e codecs |
 | ↳ OpenJPEG | 2.3 (embutido no GDCM) / 2.5 (vcpkg) | BSD-2-Clause | JPEG 2000 |
 | ↳ CharLS (embutido no GDCM) | 2.0 | BSD-3-Clause | JPEG-LS |
@@ -270,7 +341,7 @@ GDCM 3.0.24 e Catch2 3.7.1 (a libarchive segue a baseline: 3.8.x); o Qt é fixad
 | 2 — Visualizador 2D (MVP) | janela, séries, miniaturas, viewport, scroll, W/L, zoom, pan, overlays, orientação, presets, rotação/espelho/inversão, cine | **concluída** |
 | 3 — Medidas e multiview | régua, ângulo, Cobb, ROIs com HU, sonda, histograma, undo/redo, layouts, sincronização, reference lines, exportação | **concluída** |
 | 4 — MPR | axial/coronal/sagital, linhas guia arrastáveis (mover, girar/oblíquo livre, espessura por plano), thick slab MIP/MinIP/média | **concluída** |
-| 5 — 3D | volume rendering | **retirada** (06/10/2026, decisão do usuário: leveza e fluidez) |
+| 5 — 3D | volume rendering, superfície, MIP/MinIP/média, predefinições, editor de cores, recorte, tesoura 3D, giro, placa de vídeo ou processador | **concluída na 0.5.0** (retirada na 0.3.0 com VTK; refeita com motor próprio, leve) |
 | 6 — Avançado | CPR, curvas, fusão, comparação de exames, DICOM SEG/RTSTRUCT, PACS (DCMTK) | a fazer |
 | Contínuo | empacotamento assinado (Authenticode, Developer ID + notarização), traduções, acessibilidade | parcialmente (pacotes sem assinatura no CI) |
 
@@ -288,7 +359,7 @@ GDCM 3.0.24 e Catch2 3.7.1 (a libarchive segue a baseline: 3.8.x); o Qt é fixad
 | Distância correta | `QA de medidas: 100 px x 0.5 mm = 50 mm`, `distanceMeasurementInMillimetres` |
 | Sem PixelSpacing → sem mm inventado | `Missing PixelSpacing is never invented` |
 | Arquivo corrompido não derruba | fuzzing + `isolatedDecoderSurvivesCrash` |
-| Desempenho | `vtc_bench`: varredura de 425 arquivos em 20 ms; decodificação 0,5–5 ms/imagem; W/L < 0,5 ms; MPR 2–4 ms por plano |
+| Desempenho | `vtc_bench`: varredura de 425 arquivos em 20 ms; decodificação 0,5–5 ms/imagem; W/L < 0,5 ms; MPR 2–4 ms por plano. `vtc_render3d`: 3D no processador (2 núcleos) 50–300 ms por imagem de 300–500 px |
 
 ## G. Riscos técnicos e mitigação
 
@@ -298,6 +369,7 @@ GDCM 3.0.24 e Catch2 3.7.1 (a libarchive segue a baseline: 3.8.x); o Qt é fixad
 | Arquivos "reais" fora do padrão (charset, VR errada, PI incoerente, YBR em JPEG declarado RGB) | imagem errada | GDCM tolerante, regras específicas testadas (ex.: espaço de cor lido do próprio fluxo JPEG) |
 | Ordenação incorreta (InstanceNumber enganoso, tilt, ecos misturados) | erro diagnóstico | ordenação por geometria, divisão de pilhas, avisos visíveis, testes dedicados |
 | Medidas sem calibração | erro diagnóstico | só mm com PixelSpacing/ImagerPixelSpacing/US region; aviso "SEM CALIBRAÇÃO" / "CALIBRAÇÃO NO DETECTOR" |
+| Drivers de vídeo com defeito ou antigos | 3D quebrado ou programa fechado | OpenGL só num contexto fora da tela, teste inicial que confere a imagem, marca contra quedas do driver, volta automática ao processador; o processador desenha a mesma imagem |
 | Volumes grandes (> 2 GB) em máquinas modestas | falta de memória | int16 + slope/intercept no volume, limite configurável, cache LRU por bytes, mensagens claras |
 | Assinatura/notarização no macOS e Windows | alertas do SO ao instalar | documentado em BUILD.md; o CI produz pacotes não assinados até haver certificados |
 | Qt LGPL | obrigações de distribuição | link dinâmico, aviso em THIRD_PARTY_LICENSES.md |

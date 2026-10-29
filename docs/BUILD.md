@@ -7,7 +7,7 @@
 | CMake | ≥ 3.25 com presets (3.21 sem presets) |
 | Ninja | recomendado (Linux/macOS) |
 | Compilador C++20 | MSVC 2022 17.8+, Apple Clang 15+, Clang 14+, GCC 11+ |
-| Qt | 6.5 ou superior; **fixado em 6.8.3 LTS** no CI (módulos qtbase, qtsvg, qtimageformats) |
+| Qt | 6.5 ou superior; **fixado em 6.8.3 LTS** no CI (módulos qtbase — com QtOpenGL —, qtsvg, qtimageformats). Um Qt sem OpenGL também serve: o 3D passa a ser desenhado só pelo processador |
 | vcpkg | baseline `9e593bb18ea69cc5095e012465dcd675a822ed0d` (fixa GDCM 3.0.24, Catch2 3.7.1 e a libarchive 3.8.x da baseline) |
 
 As dependências de terceiros e o motivo de cada uma estão em
@@ -65,7 +65,11 @@ cmake --preset linux-local && cmake --build --preset linux-local && ctest --pres
 
 Foi assim que o VisualTC foi compilado e testado no ambiente de
 desenvolvimento desta versão (Qt headless; a interface foi verificada com
-capturas de tela offscreen).
+capturas de tela offscreen). Para testar também o 3D na placa de vídeo sem
+tela, o Qt precisa de OpenGL e do plugin `offscreen` com GLX (Qt com xcb, ou
+Xlib), e os testes rodam numa tela virtual com Mesa: `xvfb-run -a
+build/<preset>/tests/visualtc_ui_tests graphicsCardMatchesTheProcessor`
+(o `ctest` já faz isso quando encontra o `xvfb-run`).
 
 ## 4. Testes
 
@@ -78,15 +82,20 @@ build/linux-release/tests/visualtc_tests --list-tags
 - `visualtc_tests` (Catch2): texto/charsets, VOI/HU, medidas, ROIs,
   orientação, ordenação e geometria, leitura DICOM em todos os codecs,
   arquivos hostis, MPR com fantomas lineares (resultado exato), cache,
-  protocolo do worker, sincronização e exames compactados (`[archive]`: todos
+  protocolo do worker, sincronização, exames compactados (`[archive]`: todos
   os formatos, nomes maliciosos, aninhados, senha, bombas de compressão,
-  arquivos danificados).
+  arquivos danificados) e reconstrução 3D (`[render3d]`: reamostragem com
+  tilt e lacunas, redução, blocos, tabela de transferência, câmera, MIP,
+  volume, superfície, recorte, salto de espaço vazio e tesoura).
 - `visualtc_ui_tests` (QtTest, `QT_QPA_PLATFORM=offscreen`): janela real,
   arrasto de W/L, roda/teclado, régua em mm, ROI em HU, sincronização,
   crosshair do MPR, recuperação de queda do worker, arquivo com falha sem
   laço de decodificação, multiframe maior que o cache, ZIP com senha (AES),
   limpeza da pasta temporária e, na janela principal, atalhos sem
-  duplicidade, preset de TC pela tecla 1 e o painel de séries recolhível.
+  duplicidade, preset de TC pela tecla 1 e o painel de séries recolhível;
+  janela 3D (todas as predefinições, tesoura e desfazer, mouse) e a
+  **comparação placa de vídeo × processador** (`ui_3d_graphics_card`, numa
+  tela virtual; no CI do Linux ela é obrigatória: `VISUALTC_REQUIRE_GPU=1`).
 - `translations_complete` (`tools/i18n.py check`, precisa de Python 3):
   todo texto da interface — `tr()`, `QObject::tr()`,
   `QCoreApplication::translate()` e as mensagens do núcleo listadas em
@@ -103,11 +112,15 @@ build/linux-release/tests/visualtc_tests --list-tags
   ```
 
 - Desempenho: `build/<preset>/tests/vtc_bench <pasta>` (varredura,
-  decodificação por codec, W/L, montagem do volume e MPR).
+  decodificação por codec, W/L, montagem do volume e MPR) e
+  `build/<preset>/tests/vtc_render3d <pasta> <texto da série> ct-bone A saida.ppm`
+  (3D no processador; `VTC_STEP` e `VTC_NOJITTER` mudam a amostragem).
 - Exame sintético para testes manuais: `build/<preset>/tests/make_phantom <pasta> [--small]`.
 
 O executável também tem opções de automação usadas no CI:
 `VisualTC --size 1600x1000 --layout 2x2 --sync --mpr --slab 20 --preset Pulmão --screenshot saida.png <pasta>`;
+`--3d ct-bone` abre a reconstrução 3D da maior série volumétrica com aquela
+predefinição e captura a janela 3D;
 `--language es` (ou `en`, `pt`) muda o idioma só daquela execução.
 
 ## 5. Integração contínua
@@ -116,9 +129,9 @@ O executável também tem opções de automação usadas no CI:
 
 | Job | Runner | O que faz |
 |---|---|---|
-| Ubuntu x86_64 | `ubuntu-22.04` (glibc 2.35) | compila, testa, gera `.deb` + AppImage, **instala o `.deb` com apt** e abre um exame com ele e com o AppImage numa tela virtual (Xvfb, plugin X11 real), sem o Qt do CI no caminho; confere o runtime estático do AppImage |
-| Windows x64 | `windows-2022` | compila, testa, gera o instalador, **instala em modo silencioso**, abre um exame com a cópia instalada (sem o Qt do CI no PATH), confere o menu de contexto e desinstala |
-| macOS Apple Silicon | `macos-15` | compila, testa, aplica `macdeployqt` |
+| Ubuntu x86_64 | `ubuntu-22.04` (glibc 2.35) | compila, testa (o 3D na placa de vídeo com Mesa numa tela virtual), gera `.deb` + AppImage, **instala o `.deb` com apt** e abre um exame com ele e com o AppImage numa tela virtual (Xvfb, plugin X11 real), sem o Qt do CI no caminho — inclusive a **reconstrução 3D forçada na placa de vídeo**, conferida no log; confere o runtime estático do AppImage |
+| Windows x64 | `windows-2022` | compila, testa, gera o instalador, **instala em modo silencioso**, abre um exame e a reconstrução 3D com a cópia instalada (sem o Qt do CI no PATH; a máquina virtual só tem OpenGL 1.1, então o 3D volta ao processador), confere o menu de contexto e desinstala |
+| macOS Apple Silicon | `macos-15` | compila, testa, abre a reconstrução 3D com a plataforma nativa (Cocoa), aplica `macdeployqt` |
 | macOS Intel | `macos-15-intel` | idem, nativo em x86_64 |
 | macOS DMG | `macos-15` | junta os dois apps em um **app universal** (`lipo`), assina, gera o DMG e o testa nas duas arquiteturas |
 | ASan/UBSan | `ubuntu-24.04` | testes sob sanitizers e `clang-tidy` no núcleo |
@@ -134,10 +147,10 @@ os pacotes passam a exigir Ubuntu 24.04 / Debian 13) e oferece a imagem Intel
    e o app do macOS leem a versão daí) e `version` em `vcpkg.json`.
 2. Crie a versão de um destes jeitos (o job confere que a tag e o
    `VERSION` do CMakeLists.txt coincidem):
-   - no site do GitHub: *Releases › Draft a new release*, tag nova `v0.4.0`,
+   - no site do GitHub: *Releases › Draft a new release*, tag nova `v0.5.0`,
      *Publish release* — os instaladores são anexados quando o workflow
      termina (a primeira compilação leva cerca de uma hora);
-   - ou pelo terminal: `git tag v0.4.0 && git push origin v0.4.0`.
+   - ou pelo terminal: `git tag v0.5.0 && git push origin v0.5.0`.
 3. O job **release** publica a versão no GitHub com nomes fixos:
    `VisualTC-Setup-x64.exe`, `VisualTC-macOS.dmg`, `visualtc_amd64.deb`,
    `VisualTC-x86_64.AppImage` e `SHA256SUMS.txt`, com as instruções de
@@ -255,3 +268,5 @@ no Finder e aceita a pasta do CD arrastada para o ícone no Dock.
 | `qt.qpa.plugin: Could not load the Qt platform plugin "xcb"` | instalar `libxcb-cursor0` (Ubuntu) |
 | Log: "Decodificador isolado não encontrado" | `visualtc-worker` não está ao lado do executável (no macOS, dentro de `Contents/MacOS`) |
 | Testes de interface falham no Linux sem tela | exporte `QT_QPA_PLATFORM=offscreen` (os presets de teste já fazem isso) |
+| Log: "3D no processador: …" num computador com placa de vídeo | o motivo vem na mesma linha (OpenGL antigo, driver emulado, falha anterior); em **Desempenho › Renderização** escolha *Placa de vídeo (GPU)* para tentar de novo |
+| 3D muito lento num computador antigo | **Desempenho › Qualidade › Leve (computadores antigos)** |

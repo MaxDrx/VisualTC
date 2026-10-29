@@ -113,7 +113,8 @@ Priority: optional
 Description: VisualTC - visualizador de imagens médicas DICOM
  Visualizador DICOM offline para tomografia, ressonância e outras
  modalidades: abre CDs, pastas e exames compactados (ZIP, RAR, 7z),
- com ordenação espacial, janela/nível, medidas, ROI em HU e MPR.
+ com ordenação espacial, janela/nível, medidas, ROI em HU, MPR e
+ reconstrução 3D (na placa de vídeo ou no processador).
 EOF
 dpkg-deb --root-owner-group -Zxz --build "$DEB" "$OUT_DIR/visualtc_amd64.deb" >/dev/null
 dpkg-deb --info "$OUT_DIR/visualtc_amd64.deb" | sed -n '1,12p'

@@ -1,6 +1,6 @@
 ---
 # Static analysis for the core library (run by CI: run-clang-tidy on src/core,
-# dicom, imaging, measurements, mpr, synchronization).
+# dicom, imaging, measurements, mpr, render3d, synchronization).
 Checks: >
   -*,
   bugprone-*,
@@ -23,5 +23,5 @@ Checks: >
   readability-container-size-empty,
   readability-misleading-indentation
 WarningsAsErrors: ''
-HeaderFilterRegex: 'src/(core|dicom|imaging|measurements|mpr|synchronization)/.*'
+HeaderFilterRegex: 'src/(core|dicom|imaging|measurements|mpr|render3d|synchronization)/.*'
 FormatStyle: file

@@ -21,7 +21,7 @@ no GitHub Pages — veja [docs/BUILD.md](docs/BUILD.md#publicar-uma-versão)).
 
 ![VisualTC — MPR com crosshair](docs/screenshots/mpr.png)
 
-> **Aviso:** esta versão (0.4.0) é destinada a **estudos e pesquisas** e não é um dispositivo médico registrado
+> **Aviso:** esta versão (0.5.0) é destinada a **estudos e pesquisas** e não é um dispositivo médico registrado
 > (ANVISA/FDA/CE). Medidas e reconstruções devem ser conferidas antes de
 > qualquer uso diagnóstico.
 
@@ -39,6 +39,7 @@ no GitHub Pages — veja [docs/BUILD.md](docs/BUILD.md#publicar-uma-versão)).
 | Medidas | Régua, ângulo, Cobb, ROI retangular/elíptica/livre (área, média, DP, mínimo, máximo em **HU**), valor do pixel, histograma da ROI, desfazer/refazer, edição de pontos e rótulos |
 | Multiview | Layouts 1×1 a 3×3 (inclusive 1×3), botão **Plano** (axial → sagital → coronal da série ativa), série por viewport, arrastar série para viewport, maximizar com duplo clique, **sincronização por posição anatômica** (Frame of Reference), **linhas de referência** (inclusive sobre o topograma, que é aberto ao lado automaticamente) |
 | MPR | Axial, coronal e sagital; **linhas guia manipuladas com o mouse**: arrastar a linha move o plano, a bolinha gira (**oblíquo** em qualquer ângulo), a barrinha define a **espessura** (média, MIP, MinIP, 1–500 mm) de cada plano; scroll independente |
+| Reconstrução 3D | **Volume rendering**, superfície, MIP, MinIP e raio-X simulado; predefinições com miniaturas (ossos, vasos, partes moles, pele, pulmões… e de RM); editor de cores e opacidade sobre o histograma, com predefinições próprias; caixa de recorte; **tesoura 3D** (remover dentro/fora, desfazer); vistas padrão, cubo de orientação, perspectiva, giro de 360°; salvar imagem e exportar o giro. Funciona na **placa de vídeo** (OpenGL 3.3) ou, em computadores antigos, no **processador** — escolha automática, com volta ao processador se a placa falhar |
 | Exportação | PNG/JPEG (TIFF quando disponível), com ou sem anotações, opção de ocultar a identificação do paciente; captura do viewport para a área de transferência |
 | Segurança | Cada arquivo é lido e decodificado em um **processo isolado** (`visualtc-worker`); falhas de codecs de terceiros com arquivos maliciosos não derrubam o visualizador; validação estrutural antes da leitura; limites de memória; nenhuma telemetria; log sem dados de paciente |
 
@@ -46,9 +47,15 @@ no GitHub Pages — veja [docs/BUILD.md](docs/BUILD.md#publicar-uma-versão)).
 |---|---|
 | ![2×2 sincronizado](docs/screenshots/multiview.png) | ![3×3](docs/screenshots/modalities.png) |
 
-A reconstrução 3D (volume rendering) foi retirada de propósito, para manter o
-programa leve e fluido; o MPR cobre o objetivo do programa. Os próximos
-recursos (CPR, fusão PET/CT, PACS…) estão em [docs/STATUS.md](docs/STATUS.md).
+| Reconstrução 3D (exame de demonstração) |
+|---|
+| ![Reconstrução 3D](docs/screenshots/3d.png) |
+
+A reconstrução 3D usa um motor próprio, sem bibliotecas pesadas: na placa de
+vídeo a rotação é fluida mesmo em volumes grandes; sem placa adequada, o
+processador desenha imagens menores enquanto o volume gira e refina quando o
+mouse para. Os próximos recursos (CPR, fusão PET/CT, PACS…) estão em
+[docs/STATUS.md](docs/STATUS.md).
 
 ## Plataformas
 

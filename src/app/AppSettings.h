@@ -65,6 +65,22 @@ public:
     QList<WindowPreset> customPresets() const;
     void setCustomPresets(const QList<WindowPreset>& presets);
 
+    // 3D reconstruction
+    int render3dBackend() const;  // VolumeRenderView::Backend
+    void setRender3dBackend(int b);
+    int render3dQuality() const;  // VolumeRenderView::Quality
+    void setRender3dQuality(int q);
+    // Crash guard of the graphics card test: set while it runs, so a driver
+    // that closes the program is not tried again automatically.
+    bool gpuTestRunning() const;
+    void setGpuTestRunning(bool on);
+    bool gpuFailed() const;
+    void setGpuFailed(bool on);
+    QByteArray render3dUserPresets() const;  // JSON list (name, mode, points)
+    void setRender3dUserPresets(const QByteArray& json);
+    QByteArray render3dWindowGeometry() const;
+    void setRender3dWindowGeometry(const QByteArray& g);
+
     QString lastOpenDirectory() const;
     void setLastOpenDirectory(const QString& dir);
 

@@ -10,7 +10,7 @@ incluir este arquivo e os textos completos junto aos pacotes.
 
 | Componente | Versão | Licença | Forma de uso |
 |---|---|---|---|
-| Qt (qtbase, qtsvg, qtimageformats) | 6.8.3 | GNU LGPL v3 | bibliotecas dinâmicas, sem modificações |
+| Qt (qtbase — inclusive QtOpenGL —, qtsvg, qtimageformats) | 6.8.3 | GNU LGPL v3 | bibliotecas dinâmicas, sem modificações |
 | GDCM — Grassroots DICOM | 3.0.24 | BSD-3-Clause | biblioteca estática (aplicativo e `visualtc-worker`) |
 | OpenJPEG (incluído no GDCM; via vcpkg no CI) | 2.3 / 2.5 | BSD-2-Clause | JPEG 2000 |
 | CharLS (incluído no GDCM) | 2.0 | BSD-3-Clause | JPEG-LS |

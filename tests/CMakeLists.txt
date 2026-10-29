@@ -30,6 +30,7 @@ add_executable(visualtc_tests
     unit/test_worker_protocol.cpp
     unit/test_sync.cpp
     unit/test_archive.cpp
+    unit/test_render3d.cpp
 )
 target_link_libraries(visualtc_tests PRIVATE visualtc_fixtures VisualTC::core Catch2::Catch2WithMain)
 if(NOT MSVC)
@@ -56,11 +57,28 @@ if(VISUALTC_BUILD_APP)
              COMMAND visualtc_ui_tests -o ${CMAKE_BINARY_DIR}/ui_integration.log,txt -o -,txt)
     set_tests_properties(ui_integration PROPERTIES
         ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_FORCE_STDERR_LOGGING=1")
+    # 3D on the graphics card: OpenGL needs a display. On Linux a virtual one
+    # (xvfb-run) with Mesa; CI sets VISUALTC_REQUIRE_GPU=1 so that the test
+    # fails, instead of being skipped, when no OpenGL 3.3 context comes up.
+    if(UNIX AND NOT APPLE)
+        find_program(VISUALTC_XVFB_RUN xvfb-run)
+        if(VISUALTC_XVFB_RUN)
+            add_test(NAME ui_3d_graphics_card
+                     COMMAND ${VISUALTC_XVFB_RUN} -a $<TARGET_FILE:visualtc_ui_tests>
+                             graphicsCardMatchesTheProcessor -o -,txt)
+            set_tests_properties(ui_3d_graphics_card PROPERTIES
+                ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_FORCE_STDERR_LOGGING=1")
+        endif()
+    endif()
 endif()
 
 # Core performance probe (decode, window/level, MPR) on any folder.
 add_executable(vtc_bench ${CMAKE_SOURCE_DIR}/tools/vtc_bench.cpp)
 target_link_libraries(vtc_bench PRIVATE VisualTC::core)
+
+# 3D rendering of a folder on the processor (preset tuning, speed).
+add_executable(vtc_render3d ${CMAKE_SOURCE_DIR}/tools/vtc_render3d.cpp)
+target_link_libraries(vtc_render3d PRIVATE VisualTC::core)
 
 # Every text of the interface has its Spanish and English translation
 # (resources/i18n/*.json), with the same %1/%n placeholders.

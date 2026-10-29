@@ -29,11 +29,26 @@ set(VISUALTC_UI_SOURCES
     mpr/MprSession.cpp
     mpr/MprSource.cpp
     export/ImageExporter.cpp
+    view3d/GpuRayCaster.cpp
+    view3d/RangeSlider.cpp
+    view3d/TransferFunctionEditor.cpp
+    view3d/VolumeRenderView.cpp
+    view3d/VolumeRenderWindow.cpp
 )
 
 qt_add_library(visualtc_ui STATIC ${VISUALTC_UI_SOURCES})
 target_include_directories(visualtc_ui PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(visualtc_ui PUBLIC VisualTC::core Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Concurrent Qt6::Svg)
+# 3D on the graphics card through Qt's OpenGL module, when the Qt build has
+# it; otherwise the 3D view renders on the processor only.
+find_package(Qt6 6.5 QUIET COMPONENTS OpenGL)
+if(TARGET Qt6::OpenGL)
+    target_link_libraries(visualtc_ui PUBLIC Qt6::OpenGL)
+    target_compile_definitions(visualtc_ui PUBLIC VISUALTC_HAVE_OPENGL=1)
+    message(STATUS "3D na placa de vídeo (OpenGL): sim")
+else()
+    message(STATUS "3D na placa de vídeo (OpenGL): não (Qt sem OpenGL) — somente no processador")
+endif()
 target_compile_definitions(visualtc_ui PUBLIC
     VISUALTC_VERSION="${PROJECT_VERSION}")
 # Interface translations (source text -> translation), see app/I18n.h.
@@ -93,6 +108,10 @@ qt_add_resources(VisualTC "visualtc_resources"
         ${CMAKE_SOURCE_DIR}/resources/icons/histogram.svg
         ${CMAKE_SOURCE_DIR}/resources/icons/lut.svg
         ${CMAKE_SOURCE_DIR}/resources/icons/plane.svg
+        ${CMAKE_SOURCE_DIR}/resources/icons/volume3d.svg
+        ${CMAKE_SOURCE_DIR}/resources/icons/rotate3d.svg
+        ${CMAKE_SOURCE_DIR}/resources/icons/scissors.svg
+        ${CMAKE_SOURCE_DIR}/resources/icons/spin.svg
 )
 target_link_libraries(VisualTC PRIVATE visualtc_ui)
 add_dependencies(VisualTC visualtc-worker)

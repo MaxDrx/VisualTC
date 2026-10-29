@@ -1,6 +1,7 @@
 # ---------------------------------------------------------------------------
 # visualtc_core: pure C++20 (no Qt). DICOM parsing/decoding (GDCM), geometry,
-# imaging math, measurements and MPR reslicing. Fully unit tested.
+# imaging math, measurements, MPR reslicing and 3D rendering
+# on the processor. Fully unit tested.
 # ---------------------------------------------------------------------------
 add_library(visualtc_core STATIC
     core/Logger.cpp
@@ -24,6 +25,11 @@ add_library(visualtc_core STATIC
     mpr/ImageVolume.cpp
     mpr/Reslicer.cpp
     mpr/MprGeometry.cpp
+    render3d/RenderVolume.cpp
+    render3d/TransferFunction.cpp
+    render3d/Camera3D.cpp
+    render3d/CpuRayCaster.cpp
+    render3d/Sculpt.cpp
     synchronization/SpatialSync.cpp
     archive/ArchiveExtractor.cpp
 )

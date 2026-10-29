@@ -101,6 +101,10 @@ jobs:
       - name: Test
         id: test
         shell: bash
+        env:
+          # Linux: the 3D test on the graphics card runs on a virtual display
+          # with Mesa (xvfb-run) and must not be skipped there.
+          VISUALTC_REQUIRE_GPU: ${{ runner.os == 'Linux' && '1' || '' }}
         # Failures are also published as annotations (readable without the log).
         run: |
           PY=python3; [ "$RUNNER_OS" = Windows ] && PY=python
@@ -131,15 +135,19 @@ jobs:
           BIN=build/${{ matrix.preset }}
           if [ "$RUNNER_OS" == "Windows" ]; then
             "$BIN/tests/Release/make_phantom.exe" phantom --small
-            "$BIN/bin/Release/VisualTC.exe" --mpr --screenshot smoke.png phantom
+            APP="$BIN/bin/Release/VisualTC.exe"
           elif [ "$RUNNER_OS" == "macOS" ]; then
             "$BIN/tests/make_phantom" phantom --small
-            "$BIN/bin/VisualTC.app/Contents/MacOS/VisualTC" --mpr --screenshot smoke.png phantom
+            APP="$BIN/bin/VisualTC.app/Contents/MacOS/VisualTC"
           else
             "$BIN/tests/make_phantom" phantom --small
-            "$BIN/bin/VisualTC" --mpr --screenshot smoke.png phantom
+            APP="$BIN/bin/VisualTC"
           fi
+          "$APP" --mpr --screenshot smoke.png phantom
           test -s smoke.png
+          # 3D reconstruction (no display here: drawn by the processor).
+          "$APP" --3d ct-bone --screenshot smoke3d.png phantom
+          test -s smoke3d.png
 
       # ------------------------------------------------------------ Linux
       - name: Package (.deb + AppImage)
@@ -157,11 +165,26 @@ jobs:
           sudo apt-get install -y ./dist/visualtc_amd64.deb
           clean xvfb-run -a visualtc --mpr --screenshot deb.png phantom
           test -s deb.png
+          # 3D on the graphics card (Mesa) through the packaged Qt: the xcb
+          # GLX integration must be in the package.
+          mkdir -p cfg3d/VisualTC
+          printf '[render3d]\nbackend=1\n' > cfg3d/VisualTC/VisualTC.conf
+          clean env XDG_CONFIG_HOME="$PWD/cfg3d" XDG_DATA_HOME="$PWD/cfg3d" \
+            xvfb-run -a visualtc --3d ct-bone --screenshot deb3d.png phantom
+          test -s deb3d.png
+          grep -h "render3d" cfg3d/VisualTC/VisualTC/logs/visualtc.log
+          grep -q "3D na placa de vídeo" cfg3d/VisualTC/VisualTC/logs/visualtc.log
           sudo apt-get remove -y visualtc
           # The AppImage carries the static runtime, so users need no libfuse2.
           file dist/VisualTC-x86_64.AppImage | grep -Eq 'statically linked|static-pie linked'
           clean APPIMAGE_EXTRACT_AND_RUN=1 xvfb-run -a ./dist/VisualTC-x86_64.AppImage --mpr --screenshot appimage.png phantom
           test -s appimage.png
+          rm -rf cfg3d/VisualTC/VisualTC
+          clean env APPIMAGE_EXTRACT_AND_RUN=1 XDG_CONFIG_HOME="$PWD/cfg3d" XDG_DATA_HOME="$PWD/cfg3d" \
+            xvfb-run -a ./dist/VisualTC-x86_64.AppImage --3d ct-bone --screenshot appimage3d.png phantom
+          test -s appimage3d.png
+          grep -h "render3d" cfg3d/VisualTC/VisualTC/logs/visualtc.log
+          grep -q "3D na placa de vídeo" cfg3d/VisualTC/VisualTC/logs/visualtc.log
 
       # ------------------------------------------------------------ Windows
       - name: Package (installer)
@@ -189,6 +212,13 @@ jobs:
           $app = Start-Process -FilePath (Join-Path $dir 'VisualTC.exe') -Wait -PassThru `
             -WorkingDirectory $PWD -ArgumentList '--mpr', '--screenshot', 'installed.png', 'phantom'
           if ($app.ExitCode -ne 0 -or -not (Test-Path installed.png)) { throw "O VisualTC instalado não abriu ($($app.ExitCode))" }
+          # 3D with the native platform: the card of the runner (often only
+          # OpenGL 1.1) or, automatically, the processor.
+          $app3d = Start-Process -FilePath (Join-Path $dir 'VisualTC.exe') -Wait -PassThru `
+            -WorkingDirectory $PWD -ArgumentList '--3d', 'ct-bone', '--screenshot', 'installed3d.png', 'phantom'
+          if ($app3d.ExitCode -ne 0 -or -not (Test-Path installed3d.png)) { throw "A reconstrução 3D não abriu ($($app3d.ExitCode))" }
+          Get-ChildItem -Path $env:LOCALAPPDATA -Recurse -Filter visualtc.log -ErrorAction SilentlyContinue |
+            ForEach-Object { Select-String -Path $_.FullName -Pattern 'render3d' }
           if (-not (Test-Path 'HKCU:\Software\Classes\Drive\shell\VisualTC\command')) { throw "Menu de contexto ausente" }
           # The uninstaller relaunches itself from %TEMP%: wait for the files to go.
           Start-Process -FilePath (Join-Path $dir 'unins000.exe') -Wait -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES'
@@ -198,6 +228,16 @@ jobs:
           if (Test-Path 'HKCU:\Software\Classes\Drive\shell\VisualTC') { throw "Menu de contexto ficou após desinstalar" }
 
       # ------------------------------------------------------------ macOS
+      - name: 3D with the native platform (macOS)
+        if: runner.os == 'macOS'
+        timeout-minutes: 10
+        run: |
+          # Cocoa and the OpenGL of the runner (or, automatically, the processor).
+          env -u QT_QPA_PLATFORM build/${{ matrix.preset }}/bin/VisualTC.app/Contents/MacOS/VisualTC \
+            --3d ct-bone --screenshot native3d.png phantom
+          test -s native3d.png
+          grep -rh "render3d" "$HOME/Library/Application Support/VisualTC" || true
+
       - name: Bundle (macdeployqt)
         if: runner.os == 'macOS'
         run: |
@@ -213,6 +253,7 @@ jobs:
           path: |
             dist/*
             smoke.png
+            smoke3d.png
           if-no-files-found: error
 
   macos-dmg:
@@ -382,4 +423,4 @@ jobs:
       - name: clang-tidy (core library)
         run: |
           run-clang-tidy -p build/linux-debug-asan -quiet \
-            "src/(core|dicom|imaging|measurements|mpr|synchronization|archive)/.*\.cpp$"
+            "src/(core|dicom|imaging|measurements|mpr|render3d|synchronization|archive)/.*\.cpp$"

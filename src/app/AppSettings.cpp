@@ -103,6 +103,25 @@ void AppSettings::setCustomPresets(const QList<WindowPreset>& presets) {
     s.endArray();
 }
 
+int AppSettings::render3dBackend() const { return value("render3d/backend", 0).toInt(); }
+void AppSettings::setRender3dBackend(int b) { setValue("render3d/backend", b); }
+int AppSettings::render3dQuality() const { return value("render3d/quality", 0).toInt(); }
+void AppSettings::setRender3dQuality(int q) { setValue("render3d/quality", q); }
+bool AppSettings::gpuTestRunning() const { return value("render3d/gpuTestRunning", false).toBool(); }
+void AppSettings::setGpuTestRunning(bool on) {
+    QSettings s;
+    s.setValue("render3d/gpuTestRunning", on);
+    s.sync();  // on disk before the test: it must survive a crash of the driver
+}
+bool AppSettings::gpuFailed() const { return value("render3d/gpuFailed", false).toBool(); }
+void AppSettings::setGpuFailed(bool on) { setValue("render3d/gpuFailed", on); }
+QByteArray AppSettings::render3dUserPresets() const { return value("render3d/userPresets", QByteArray()).toByteArray(); }
+void AppSettings::setRender3dUserPresets(const QByteArray& json) { setValue("render3d/userPresets", json); }
+QByteArray AppSettings::render3dWindowGeometry() const {
+    return value("render3d/geometry", QByteArray()).toByteArray();
+}
+void AppSettings::setRender3dWindowGeometry(const QByteArray& g) { setValue("render3d/geometry", g); }
+
 QString AppSettings::lastOpenDirectory() const { return value("io/lastDir", QString()).toString(); }
 void AppSettings::setLastOpenDirectory(const QString& dir) { setValue("io/lastDir", dir); }
 

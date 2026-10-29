@@ -64,10 +64,15 @@ int main(int argc, char* argv[]) {
                                     QStringLiteral("nome"));
     const QCommandLineOption size(QStringLiteral("size"), QStringLiteral("Tamanho da janela, ex.: 1600x1000."),
                                   QStringLiteral("LxA"));
+    const QCommandLineOption view3d(QStringLiteral("3d"),
+                                    QStringLiteral("Abre a reconstrução 3D da maior série volumétrica com a "
+                                                   "predefinição indicada (testes)."),
+                                    QStringLiteral("predefinição"));
     const QCommandLineOption language(QStringLiteral("language"),
                                       QStringLiteral("Idioma só desta execução: pt, es ou en (testes)."),
                                       QStringLiteral("pt|es|en"));
-    parser.addOptions({debugOpt, noIsolation, screenshot, layout, mpr, sync, demo, slab, preset, size, language});
+    parser.addOptions(
+        {debugOpt, noIsolation, screenshot, layout, mpr, sync, demo, slab, preset, size, view3d, language});
     parser.process(app);
     // Interface language (Preferências › Interface), before any window.
     vtc::installLanguage(app, parser.isSet(language) ? vtc::languageFromKey(parser.value(language))
@@ -108,6 +113,7 @@ int main(int argc, char* argv[]) {
     automation.demoMeasurements = parser.isSet(demo) ? QStringLiteral("1") : QString();
     automation.slab = parser.value(slab).toInt();
     automation.preset = parser.value(preset);
+    automation.view3d = parser.value(view3d);
     window.setAutomation(automation);
     if (parser.isSet(size)) {
         const QStringList wh = parser.value(size).toLower().split('x');
