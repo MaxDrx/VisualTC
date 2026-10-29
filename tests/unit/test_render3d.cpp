@@ -56,7 +56,7 @@ int gray(std::uint32_t p) {
 
 }  // namespace
 
-TEST_CASE("Volume 3D: reamostragem regular a partir dos cortes", "[render3d]") {
+TEST_CASE("3D volume: regular resampling of the slices", "[render3d]") {
     // 6 slices 2 mm apart, value = 10 * z(mm) + x.
     std::vector<Vec3> origins;
     std::vector<std::vector<float>> slices;
@@ -90,7 +90,7 @@ TEST_CASE("Volume 3D: reamostragem regular a partir dos cortes", "[render3d]") {
     REQUIRE(back.z == Approx(4.0));
 }
 
-TEST_CASE("Volume 3D: inclinação do gantry e cortes faltantes", "[render3d]") {
+TEST_CASE("3D volume: gantry tilt and missing slices", "[render3d]") {
     std::vector<Vec3> origins;
     std::vector<std::vector<float>> slices;
     // Each slice shifted 1 mm in x (tilt); slices 3 and 4 missing (gap of 3 mm).
@@ -120,7 +120,7 @@ TEST_CASE("Volume 3D: inclinação do gantry e cortes faltantes", "[render3d]") 
     REQUIRE(v.at(8, 5, 4) == 0);
 }
 
-TEST_CASE("Volume 3D: redução respeita o limite de voxels", "[render3d]") {
+TEST_CASE("3D volume: reduction keeps within the voxel budget", "[render3d]") {
     std::vector<Vec3> origins;
     std::vector<std::vector<float>> slices;
     for (int k = 0; k < 40; ++k) {
@@ -146,7 +146,7 @@ TEST_CASE("Volume 3D: redução respeita o limite de voxels", "[render3d]") {
     REQUIRE(small->minValue() == Approx(v.minValue()));
 }
 
-TEST_CASE("Volume 3D: mínimos e máximos dos blocos", "[render3d]") {
+TEST_CASE("3D volume: block minima and maxima", "[render3d]") {
     const auto v = ball(20, 6.0, 1000.0F, -1000.0F);
     for (int bk = 0; bk < v->blocksZ(); ++bk) {
         for (int bj = 0; bj < v->blocksY(); ++bj) {
@@ -169,7 +169,7 @@ TEST_CASE("Volume 3D: mínimos e máximos dos blocos", "[render3d]") {
     }
 }
 
-TEST_CASE("Tabela de transferência: opacidade corrigida pela distância", "[render3d]") {
+TEST_CASE("Transfer table: opacity corrected for the sampling distance", "[render3d]") {
     const auto v = ball(8, 3.0, 1000.0F, -1000.0F);
     TransferFunction tf;
     tf.points = {{-1000.0, 0, 0, 0, 0}, {0.0, 1, 0, 0, 0}, {500.0, 1, 0, 0, 0.5F}, {1000.0, 1, 1, 1, 0.5F}};
@@ -190,7 +190,7 @@ TEST_CASE("Tabela de transferência: opacidade corrigida pela distância", "[ren
     REQUIRE(moved.evaluate(600.0)[3] == Approx(0.5));
 }
 
-TEST_CASE("Predefinições 3D resolvem para qualquer volume", "[render3d]") {
+TEST_CASE("3D presets resolve for any volume", "[render3d]") {
     const auto ct = ball(16, 5.0, 700.0F, -1000.0F);
     const auto mr = RenderVolume::fromValues(16, 16, 16, 1, 1, 1, std::vector<float>(4096, 300.0F), false);
     REQUIRE(renderPresets().size() >= 10);
@@ -206,7 +206,7 @@ TEST_CASE("Predefinições 3D resolvem para qualquer volume", "[render3d]") {
     REQUIRE(findRenderPreset("não existe") == nullptr);
 }
 
-TEST_CASE("Câmera 3D: vistas padrão e projeção", "[render3d]") {
+TEST_CASE("3D camera: standard views and projection", "[render3d]") {
     Camera3D cam;
     for (ViewDirection d : {ViewDirection::Anterior, ViewDirection::Posterior, ViewDirection::Left,
                             ViewDirection::Right, ViewDirection::Superior, ViewDirection::Inferior}) {
@@ -244,7 +244,7 @@ TEST_CASE("Câmera 3D: vistas padrão e projeção", "[render3d]") {
     REQUIRE((after.origin - before.origin).dot(cam.down) == Approx(0.0).margin(1e-9));
 }
 
-TEST_CASE("Ray casting: MIP é o máximo ao longo do raio", "[render3d]") {
+TEST_CASE("Ray casting: MIP is the maximum along the ray", "[render3d]") {
     // A bright line along y (the viewing direction of the anterior view).
     const int n = 24;
     std::vector<float> values(static_cast<std::size_t>(n) * n * n, -1000.0F);
@@ -272,7 +272,7 @@ TEST_CASE("Ray casting: MIP é o máximo ao longo do raio", "[render3d]") {
     REQUIRE(render(*v, TransferFunction{}, cam, s, n) == img);
 }
 
-TEST_CASE("Ray casting: volume e superfície de uma esfera", "[render3d]") {
+TEST_CASE("Ray casting: volume and surface of a ball", "[render3d]") {
     const auto v = ball(40, 12.0, 1000.0F, -1000.0F);
     Camera3D cam;
     cam.setView(ViewDirection::Anterior);
@@ -309,7 +309,7 @@ TEST_CASE("Ray casting: volume e superfície de uma esfera", "[render3d]") {
     REQUIRE(distance(*hitVr, v->center()) == Approx(12.4).margin(1.5));
 }
 
-TEST_CASE("Ray casting: caixa de recorte", "[render3d]") {
+TEST_CASE("Ray casting: crop box", "[render3d]") {
     const auto v = ball(40, 15.0, 1000.0F, -1000.0F);
     Camera3D cam;
     cam.setView(ViewDirection::Anterior);
@@ -322,7 +322,7 @@ TEST_CASE("Ray casting: caixa de recorte", "[render3d]") {
     REQUIRE(gray(img[32 * 64 + 42]) == 0);   // removed
 }
 
-TEST_CASE("Tesoura 3D remove o que foi contornado, só no volume copiado", "[render3d]") {
+TEST_CASE("3D scissors remove the outlined region only in the copy", "[render3d]") {
     const auto mask = rasterizePolygon({{10, 10}, {20, 10}, {20, 30}, {10, 30}}, 40, 40);
     int count = 0;
     for (auto m : mask) {
