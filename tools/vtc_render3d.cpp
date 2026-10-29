@@ -137,6 +137,9 @@ int main(int argc, char** argv) {
     if (const char* step = std::getenv("VTC_STEP")) {
         settings.stepVoxels = std::stod(step);
     }
+    if (std::getenv("VTC_FAST") != nullptr) {
+        settings.fastGradient = true;
+    }
     if (std::getenv("VTC_NOJITTER") != nullptr) {
         settings.jitter = false;
     }
@@ -165,10 +168,15 @@ int main(int argc, char** argv) {
     cam.fit(vol, size, size);
     cam.rotate(yaw * 3.14159265358979 / 180.0, pitch * 3.14159265358979 / 180.0);
     std::vector<std::uint32_t> img(static_cast<std::size_t>(size) * static_cast<std::size_t>(size));
-    auto r0 = Clock::now();
-    CpuRayCaster::render(vol, lut, cam, settings, size, size, img.data());
-    auto r1 = Clock::now();
-    std::printf("renderização %dx%d: %.0f ms em %u núcleos\n", size, size, ms(r0, r1), hardwareThreads());
+    // VTC_REPEAT=N: best of N (timings on a busy machine vary).
+    const int repeat = std::getenv("VTC_REPEAT") != nullptr ? std::max(1, std::atoi(std::getenv("VTC_REPEAT"))) : 1;
+    double best = 1e30;
+    for (int i = 0; i < repeat; ++i) {
+        auto r0 = Clock::now();
+        CpuRayCaster::render(vol, lut, cam, settings, size, size, img.data());
+        best = std::min(best, ms(r0, Clock::now()));
+    }
+    std::printf("renderização %dx%d: %.0f ms em %u núcleos\n", size, size, best, hardwareThreads());
     std::ofstream out(argv[5], std::ios::binary);
     out << "P6\n" << size << " " << size << "\n255\n";
     for (std::uint32_t p : img) {

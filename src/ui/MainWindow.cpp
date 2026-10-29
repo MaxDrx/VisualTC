@@ -1257,6 +1257,7 @@ void MainWindow::startMpr(const QString& seriesId) {
         if (!volume) {
             actMpr_->setChecked(false);
             pendingSlab_.reset();
+            pendingCenter_.reset();
             if (!error.isEmpty()) {
                 QMessageBox::warning(this, tr("MPR"), error);
             }
@@ -1267,6 +1268,10 @@ void MainWindow::startMpr(const QString& seriesId) {
         if (AppSettings::instance().quality() == QualityLevel::Performance) {
             session->setInterpolation(Interpolation::Nearest);
         }
+        if (pendingCenter_ && pendingCenter_->first == series->id) {
+            session->setCenter(pendingCenter_->second);  // a point picked in the 3D view
+        }
+        pendingCenter_.reset();
         grid_->enterMpr(session);
         infoLabel_->setText(tr("MPR: %1 × %2 × %3 voxels · %4 MB")
                                 .arg(volume->nx())
@@ -1500,9 +1505,21 @@ void MainWindow::open3D() {
         }
         auto* w = new VolumeRenderWindow(volume, id, QString::fromStdString(series->modality()),
                                          seriesDescription(*series), this);
+        connect(w, &VolumeRenderWindow::pointPicked, this, &MainWindow::locateInMpr);
         windows3d_.append(w);
         w->show();
     });
+}
+
+void MainWindow::locateInMpr(const QString& seriesId, const Vec3& patient) {
+    if (auto session = grid_->mprSession(); session && session->series() &&
+                                             QString::fromStdString(session->series()->id) == seriesId) {
+        session->setCenter(patient);
+        return;
+    }
+    // The MPR of that series opens on the point.
+    pendingCenter_ = std::make_pair(seriesId.toStdString(), patient);
+    startMpr(seriesId);
 }
 
 void MainWindow::createMprActions() {

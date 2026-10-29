@@ -33,7 +33,7 @@ double radians(double deg) {
 VolumeRenderView::QualityParams VolumeRenderView::qualityParams(Quality q) {
     switch (q) {
         case Quality::Light:
-            return {16ULL << 20, 2ULL << 20, 90'000, 0.6, 1.2, 0.8, 0.6};
+            return {16ULL << 20, 2ULL << 20, 90'000, 0.6, 1.2, 0.8, 0.75};
         case Quality::Maximum: {
             // The full volume only where memory allows it.
             const std::uint64_t ram = physicalMemoryBytes();
@@ -120,6 +120,7 @@ void VolumeRenderView::setVolume(const RenderVolumePtr& volume, bool keepCamera)
         return;
     }
     if (!keepCamera || !cameraFitted_) {
+        marker_.reset();
         camera_.setView(ViewDirection::Anterior);
         camera_.fit(*volume_, std::max(1, width()), std::max(1, height()));
         cameraFitted_ = width() > 1 && height() > 1;
@@ -465,6 +466,7 @@ void VolumeRenderView::startCpu(bool final, double scaleOverride) {
     job.opacity = opacity_;
     job.settings = settings_;
     job.settings.stepVoxels = final ? q.cpuFinalStep : q.interactionStep;
+    job.settings.fastGradient = !final;
     job.width = std::max(1, static_cast<int>(std::lround(dev.width() * scale)));
     job.height = std::max(1, static_cast<int>(std::lround(dev.height() * scale)));
     job.camera = cameraFor(job.width, job.height);
@@ -584,6 +586,17 @@ void VolumeRenderView::paintEvent(QPaintEvent* /*e*/) {
     }
     const double side = std::min(90.0, std::min(width(), height()) * 0.22);
     drawOrientationCube(p, QRectF(width() - side - 8, height() - side - 8, side, side));
+    if (marker_) {
+        double mx = 0;
+        double my = 0;
+        if (camera_.project(*marker_, width(), height(), mx, my)) {
+            p.setPen(QPen(Theme::measurement(), 1.6));
+            p.drawLine(QPointF(mx - 9, my), QPointF(mx - 3, my));
+            p.drawLine(QPointF(mx + 3, my), QPointF(mx + 9, my));
+            p.drawLine(QPointF(mx, my - 9), QPointF(mx, my - 3));
+            p.drawLine(QPointF(mx, my + 3), QPointF(mx, my + 9));
+        }
+    }
     if (lasso_.size() > 1) {
         QPainterPath path;
         path.moveTo(lasso_.front());
@@ -807,6 +820,33 @@ void VolumeRenderView::mouseReleaseEvent(QMouseEvent* /*e*/) {
         setTool(tool_);
     }
     drag_ = Drag::None;
+}
+
+std::optional<Vec3> VolumeRenderView::pick(const QPointF& pos) const {
+    if (!volume_) {
+        return std::nullopt;
+    }
+    RenderSettings s = settings_;
+    s.stepVoxels = 0.5;
+    const TransferLut lut = buildTransferLut(tf_, *volume_, s.stepMm(volume_->minSpacing()), opacity_);
+    return CpuRayCaster::pick(*volume_, lut, camera_, s, std::max(1, width()), std::max(1, height()), pos.x(), pos.y());
+}
+
+void VolumeRenderView::setMarker(const std::optional<Vec3>& p) {
+    marker_ = p;
+    update();
+}
+
+void VolumeRenderView::mouseDoubleClickEvent(QMouseEvent* e) {
+    if (e->button() != Qt::LeftButton || tool_ == Tool::Scissors) {
+        QWidget::mouseDoubleClickEvent(e);
+        return;
+    }
+    const std::optional<Vec3> p = pick(e->position());
+    setMarker(p);
+    if (p) {
+        Q_EMIT pointPicked(*p);
+    }
 }
 
 void VolumeRenderView::wheelEvent(QWheelEvent* e) {

@@ -6,6 +6,7 @@
 #include <memory>
 #include <vector>
 
+#include "core/Vec3.h"
 #include "mpr/ImageVolume.h"
 #include "render3d/RenderVolume.h"
 #include "render3d/Sculpt.h"
@@ -57,6 +58,8 @@ public:
 Q_SIGNALS:
     void volumeReady();
     void cutsApplied();
+    // Double click on a structure: the MPR of the series goes there.
+    void pointPicked(const QString& seriesId, const vtc::Vec3& patient);
 
 protected:
     void closeEvent(QCloseEvent* e) override;

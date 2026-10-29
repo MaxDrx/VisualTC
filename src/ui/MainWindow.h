@@ -100,6 +100,7 @@ private:
     void showPlane(MprOrientation o);
     void cyclePlane();
     void open3D();
+    void locateInMpr(const QString& seriesId, const Vec3& patient);
     void createMprActions();
     void populateMprMenu(QMenu* m);
     void setAccent(Accent a);
@@ -187,6 +188,7 @@ private:
     std::map<int, QAction*> planeActions_;
     QToolButton* planeBtn_ = nullptr;
     QList<QPointer<QWidget>> windows3d_;  // open 3D reconstructions (one per series)
+    std::optional<std::pair<std::string, Vec3>> pendingCenter_;  // point picked in 3D, MPR still opening
     QActionGroup* accentGroup_ = nullptr;
     std::optional<std::pair<double, int>> pendingSlab_;  // MIP/thickness chosen before the MPR opened
     struct {

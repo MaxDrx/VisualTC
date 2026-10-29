@@ -57,6 +57,9 @@ por captura de tela). A numeração (§) segue as seções do prompt mestre.
   padrão (anterior, posterior, direita, esquerda, superior, inferior), giros
   de 90°/180°, **cubo de orientação** (L/R, A/P, H/F), perspectiva,
   iluminação, fundo preto/cinza/branco, **giro de 360°** contínuo.
+- **Clique duplo no 3D** escolhe a estrutura sob o mouse (onde a imagem fica
+  opaca, a superfície ou o máximo do MIP), marca com uma cruz e leva o
+  cruzamento do MPR da série até ela (abrindo o MPR se preciso).
 - **Salvar imagem** (PNG/JPEG, Ctrl+S), copiar (Ctrl+C) e **exportar o giro**
   (N imagens PNG numeradas); imagens sem identificação do paciente.
 - **Dois motores com a mesma imagem**: placa de vídeo (OpenGL 3.3, shader
@@ -220,7 +223,7 @@ por captura de tela). A numeração (§) segue as seções do prompt mestre.
 
 ## A FAZER
 - **CPR** (reconstrução curva) e curvas de centro de vaso.
-- 3D: medidas sobre o volume, clicar no 3D para posicionar o MPR, endoscopia
+- 3D: medidas sobre o volume, endoscopia
   virtual (câmera dentro do volume), remoção automática de mesa e de ossos,
   segmentação por crescimento de região, exportação em vídeo (MP4) e em STL.
 - Visualizador completo de tags DICOM (dump de todos os elementos).
@@ -318,7 +321,7 @@ GDCM 3.0.24, libarchive 3.8.7, Catch2 3.7.1.
 | `ctest` Release com `-Werror` (`linux-local`) | todos aprovados (casos Catch2 + suíte de interface + traduções completas); o teste de localidade roda com `pt_BR.UTF-8` instalada (no CI ela é gerada) |
 | `ctest` Debug + ASan + UBSan | todos aprovados, sem erros do sanitizer |
 | Reconstrução 3D (`[render3d]`) | 11 casos / 200 verificações: reamostragem com gantry tilt e lacunas (nada inventado), redução dentro do orçamento, mínimos/máximos dos blocos conferidos voxel a voxel, correção da opacidade pela distância, todas as predefinições, câmera (vistas padrão, projeção ida e volta ortográfica e perspectiva, zoom no cursor), MIP = máximo do raio, esfera em volume/superfície (silhueta, ponto escolhido na superfície), salto de espaço vazio sem mudar a imagem, caixa de recorte, tesoura dentro/fora |
-| 3D na interface | janela 3D com todas as predefinições, MIP, tesoura (metade removida) e desfazer, rotação com o mouse; **placa de vídeo × processador** com Mesa (llvmpipe) numa tela virtual: diferença média < 2 níveis de cinza em VR, partes moles, MIP, raio-X e superfície; janela aberta pelo Ctrl+D, uma por série, fechada com o estudo |
+| 3D na interface | janela 3D com todas as predefinições, MIP, tesoura (metade removida) e desfazer, ponto escolhido com clique duplo na superfície da esfera, rotação com o mouse; **placa de vídeo × processador** com Mesa (llvmpipe) numa tela virtual: diferença média < 2 níveis de cinza em VR, partes moles, MIP, raio-X e superfície; janela aberta pelo Ctrl+D, uma por série, fechada com o estudo; ponto do 3D abre o MPR centrado nele e depois o move |
 | Interface (QtTest offscreen) | 28 testes: **botão Plano (sagital, coronal, volta ao original), layout 1×3 e barra sem Capturar/Reset**, **menu do MPR sem submenu (5 mm abre o MPR) e Cruz que oculta/mostra as linhas**, **× fecha só um estudo e ele pode ser reaberto**, **cores de destaque e Preferências com idiomas**, **espanhol (menus, plurais, mensagens do núcleo com partes variáveis, vírgula decimal)**, mais janela DICOM, arrasto W/L, roda/teclado, régua 50 mm, ROI em HU, sincronização espacial, crosshair do MPR, **linhas do MPR (mover plano, girar 30° com a linha seguindo o mouse, espessura de um só plano, centro)**, **planos independentes do MPR (espessura/versão por plano, 460 rotações sem perder a perpendicularidade)**, **LUT colorida**, **histograma habilitado pela ROI**, **linhas de referência com topograma de outro FoR**, queda do worker, falha sem laço de decodificação, multiframe maior que o cache, atalhos únicos e preset pela tecla 1, ZIP AES com senha errada e certa, limpeza da pasta temporária, painel de séries recolhível/estreito/lembrado, abertura por `QFileOpenEvent` |
 | Exames compactados (`[archive]`) | detecção pelo conteúdo; ZIP, ZIP sem compressão, 7z, TGZ, TBZ2, TXZ, TZST, ISO, `.dcm.gz`; nomes hostis e link simbólico; aninhados; ZipCrypto e AES-256; bombas e limites; 600 arquivos compactados danificados; protocolo do worker rejeita caminhos fora do destino. App real: ZIP de 26 MB com 425 imagens aberto em ~1,9 s, pasta temporária apagada ao sair |
 | Localidade | app sem processo isolado com `LC_ALL=pt_BR.UTF-8`: calibração, espessura, posição e MPR corretos |

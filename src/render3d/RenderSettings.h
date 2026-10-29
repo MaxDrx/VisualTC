@@ -34,6 +34,7 @@ struct RenderSettings {
     std::array<float, 3> background{0.0F, 0.0F, 0.0F};
     bool jitter = true;              // breaks the rings of regular sampling
     bool emptySpaceSkipping = true;  // off only to check that skipping changes nothing
+    bool fastGradient = false;       // processor, while moving: cheaper lighting
 
     [[nodiscard]] double stepMm(double minSpacing) const { return stepVoxels * minSpacing; }
 };

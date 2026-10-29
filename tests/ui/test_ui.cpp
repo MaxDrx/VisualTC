@@ -1321,6 +1321,16 @@ private Q_SLOTS:
         w->undoCut();  // back to the original volume (no computation needed)
         QTRY_COMPARE_WITH_TIMEOUT(applied.count(), 2, 30000);
         QCOMPARE(w->cutCount(), 0);
+        // Double click picks the near surface of the ball (and tells the MPR).
+        QSignalSpy picked(w, &VolumeRenderWindow::pointPicked);
+        const QPoint centre(view->width() / 2, view->height() / 2);
+        const auto hit = view->pick(centre);
+        QVERIFY(hit.has_value());
+        QVERIFY(std::abs(distance(*hit, Vec3(23.5, 23.5, 23.5)) - 16.0) < 1.5);
+        QVERIFY(!view->pick(QPoint(3, 3)).has_value());
+        QTest::mouseDClick(view, Qt::LeftButton, Qt::NoModifier, centre);
+        QTRY_COMPARE(picked.count(), 1);
+        QCOMPARE(picked.front().at(0).toString(), QStringLiteral("ball"));
         // Interaction: rotate and zoom with the mouse, then the final image.
         QTest::mousePress(view, Qt::LeftButton, Qt::NoModifier, QPoint(100, 100));
         QTest::mouseMove(view, QPoint(160, 120));
@@ -1399,6 +1409,14 @@ private Q_SLOTS:
         open3d->trigger();
         QCoreApplication::processEvents();
         QCOMPARE(window->findChildren<VolumeRenderWindow*>().size(), qsizetype(1));
+        // A point picked in 3D opens the MPR of the series centred on it.
+        const Vec3 target(5.0, -3.0, 12.0);
+        Q_EMIT w->pointPicked(w->seriesId(), target);
+        QTRY_VERIFY_WITH_TIMEOUT(grid->mprSession() != nullptr, 60000);
+        QVERIFY(distance(grid->mprSession()->center(), target) < 1.0);
+        const Vec3 second(-4.0, 6.0, 20.0);
+        Q_EMIT w->pointPicked(w->seriesId(), second);  // MPR open: moves at once
+        QVERIFY(distance(grid->mprSession()->center(), second) < 1.0);
         // Closing the exams closes its 3D window.
         for (auto* a : window->findChildren<QAction*>()) {
             if (a->text() == QStringLiteral("Fechar estudos")) {

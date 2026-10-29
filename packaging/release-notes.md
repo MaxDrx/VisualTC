@@ -22,6 +22,7 @@ Os demais arquivos abaixo (código-fonte, `SHA256SUMS.txt`) não são necessári
     janela/nível;
   - **caixa de recorte**, **tesoura 3D** (remover dentro ou fora do contorno, desfazer), vistas anterior,
     posterior, laterais, superior e inferior, cubo de orientação, perspectiva e **giro de 360°**;
+  - **clique duplo** numa estrutura leva o cruzamento do **MPR** até ela;
   - salvar a imagem (PNG/JPEG), copiar e exportar o giro como sequência de imagens.
 - **Funciona em qualquer computador**: usa a **placa de vídeo** (OpenGL 3.3) quando ela existe e, nos
   computadores antigos ou sem placa adequada, o **processador**, com imagem mais leve enquanto o volume gira.

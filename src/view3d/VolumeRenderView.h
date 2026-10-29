@@ -9,6 +9,7 @@
 #include <array>
 #include <atomic>
 #include <memory>
+#include <optional>
 #include <vector>
 
 #include "render3d/Camera3D.h"
@@ -86,6 +87,10 @@ public:
     // the current view or of `camera` (kept in widget pixels); null when
     // there is no volume.
     QImage renderNow(int width, int height, const Camera3D* camera = nullptr);
+    // The structure seen at a widget position (where the image becomes
+    // opaque, the surface, or the maximum of a MIP); nothing on empty space.
+    [[nodiscard]] std::optional<Vec3> pick(const QPointF& pos) const;
+    void setMarker(const std::optional<Vec3>& p);
     // What the view shows, at full quality, with the orientation cube.
     QImage snapshot();
 
@@ -100,6 +105,8 @@ Q_SIGNALS:
     void settingsDragged(const vtc::RenderSettings& settings);
     void rendererChanged();
     void frameDrawn();
+    // Double click: the structure under the mouse (patient coordinates).
+    void pointPicked(const vtc::Vec3& patient);
 
 protected:
     void paintEvent(QPaintEvent* e) override;
@@ -107,6 +114,7 @@ protected:
     void mousePressEvent(QMouseEvent* e) override;
     void mouseMoveEvent(QMouseEvent* e) override;
     void mouseReleaseEvent(QMouseEvent* e) override;
+    void mouseDoubleClickEvent(QMouseEvent* e) override;
     void wheelEvent(QWheelEvent* e) override;
     void keyPressEvent(QKeyEvent* e) override;
 
@@ -183,6 +191,7 @@ private:
     bool pendingFinal_ = false;
     bool cropBoxVisible_ = false;
     double lastFrameMs_ = 0.0;
+    std::optional<Vec3> marker_;  // last point picked, shown as a small cross
 
     QFutureWatcher<JobResult> cpuWatcher_;
     std::shared_ptr<std::atomic<bool>> cpuCancel_;

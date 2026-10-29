@@ -214,6 +214,10 @@ void VolumeRenderWindow::buildUi() {
     connect(view_, &VolumeRenderView::settingsDragged, this, [this](const RenderSettings&) { syncSettingsWidgets(); });
     connect(view_, &VolumeRenderView::rendererChanged, this, &VolumeRenderWindow::updateStatus);
     connect(view_, &VolumeRenderView::frameDrawn, this, &VolumeRenderWindow::updateStatus);
+    connect(view_, &VolumeRenderView::pointPicked, this, [this](const Vec3& p) {
+        Q_EMIT pointPicked(seriesId_, p);
+        statusBar()->showMessage(tr("Cruzamento do MPR posicionado no ponto escolhido."), 5000);
+    });
 }
 
 QWidget* VolumeRenderWindow::buildPanel() {
@@ -451,6 +455,10 @@ QWidget* VolumeRenderWindow::buildPanel() {
         rotRow->addWidget(b);
     }
     views->addLayout(rotRow, 3, 0, 1, 2);
+    auto* pickHint = new QLabel(tr("Clique duplo numa estrutura leva o cruzamento do MPR até ela."), viewsBox);
+    pickHint->setWordWrap(true);
+    pickHint->setStyleSheet(QStringLiteral("color: gray;"));
+    views->addWidget(pickHint, 4, 0, 1, 2);
     layout->addWidget(viewsBox);
 
     // Performance.

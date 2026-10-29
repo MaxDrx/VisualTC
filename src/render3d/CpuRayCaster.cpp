@@ -150,10 +150,22 @@ struct Context {
     }
 
     // Gradient in modality units per mm, in patient coordinates.
-    [[nodiscard]] Vec3 gradient(float x, float y, float z) const {
-        const float gx = (fetch(x + 1.0F, y, z) - fetch(x - 1.0F, y, z)) * gradScale[0];
-        const float gy = (fetch(x, y + 1.0F, z) - fetch(x, y - 1.0F, z)) * gradScale[1];
-        const float gz = (fetch(x, y, z + 1.0F) - fetch(x, y, z - 1.0F)) * gradScale[2];
+    // Gradient in modality units per mm, in patient coordinates. `centre` is
+    // the sample at (x, y, z): while the view moves, one-sided differences
+    // (3 reads instead of 6) are enough.
+    [[nodiscard]] Vec3 gradient(float x, float y, float z, float centre) const {
+        float gx = 0.0F;
+        float gy = 0.0F;
+        float gz = 0.0F;
+        if (s.fastGradient) {
+            gx = (fetch(x + 1.0F, y, z) - centre) * 2.0F * gradScale[0];
+            gy = (fetch(x, y + 1.0F, z) - centre) * 2.0F * gradScale[1];
+            gz = (fetch(x, y, z + 1.0F) - centre) * 2.0F * gradScale[2];
+        } else {
+            gx = (fetch(x + 1.0F, y, z) - fetch(x - 1.0F, y, z)) * gradScale[0];
+            gy = (fetch(x, y + 1.0F, z) - fetch(x, y - 1.0F, z)) * gradScale[1];
+            gz = (fetch(x, y, z + 1.0F) - fetch(x, y, z - 1.0F)) * gradScale[2];
+        }
         return vol.axisX() * static_cast<double>(gx) + vol.axisY() * static_cast<double>(gy) +
                vol.axisZ() * static_cast<double>(gz);
     }
@@ -266,7 +278,7 @@ struct Context {
                     if (c[3] > 1e-4F) {
                         // Lighting only where the sample shows: its gradient costs six reads.
                         if (s.shading && transmit * c[3] > kShadeContribution) {
-                            shade(c, gradient(p[0], p[1], p[2]), viewDir, false);
+                            shade(c, gradient(p[0], p[1], p[2], q), viewDir, false);
                         }
                         const float w = transmit * c[3];
                         rgba[0] += w * c[0];
@@ -314,7 +326,7 @@ struct Context {
                         position(hi, p);
                         float c[3] = {s.surfaceColor[0], s.surfaceColor[1], s.surfaceColor[2]};
                         if (s.shading) {
-                            shade(c, gradient(p[0], p[1], p[2]), viewDir, true);
+                            shade(c, gradient(p[0], p[1], p[2], fetch(p[0], p[1], p[2])), viewDir, true);
                         }
                         rgba[0] = c[0];
                         rgba[1] = c[1];

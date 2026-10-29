@@ -280,6 +280,10 @@ calibração, as medidas são mostradas em **pixels** e o aviso
   além de giros de 90° e 180°. O **cubo de orientação** no canto mostra as
   letras do paciente (L/R, A/P, H/F), como nas imagens 2D. **Girar 360°**
   liga a rotação contínua.
+- **Do 3D para o MPR**: um **clique duplo** numa estrutura (um osso, um vaso,
+  a superfície) marca o ponto com uma pequena cruz e leva o cruzamento do
+  MPR da mesma série até ele — se o MPR estiver fechado, ele abre já
+  centrado no ponto.
 - **Recorte (caixa)**: as três barras com duas alças limitam o volume em
   cada direção (letras nas pontas); ao arrastar, a caixa aparece na imagem.
 - **Tesoura 3D**: escolha **Remover dentro** ou **Remover fora** e contorne
