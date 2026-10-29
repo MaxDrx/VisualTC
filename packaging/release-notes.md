@@ -28,6 +28,8 @@ Os demais arquivos abaixo (código-fonte, `SHA256SUMS.txt`) não são necessári
   computadores antigos ou sem placa adequada, o **processador**, com imagem mais leve enquanto o volume gira.
   A escolha é automática (pode ser trocada em **Desempenho**), e se a placa falhar o programa passa sozinho
   para o processador.
+- **Linux**: o programa abre também nos computadores que não têm a biblioteca `libopengl0` (antes, nesses
+  computadores, o VisualTC não chegava a abrir).
 
 ### Apareceu um aviso na primeira vez?
 

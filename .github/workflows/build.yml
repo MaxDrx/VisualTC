@@ -186,6 +186,32 @@ jobs:
           grep -h "render3d" cfg3d/VisualTC/VisualTC/logs/visualtc.log
           grep -q "3D na placa de vídeo" cfg3d/VisualTC/VisualTC/logs/visualtc.log
 
+      - name: Test the Linux packages on a bare Ubuntu (only what they declare)
+        if: runner.os == 'Linux'
+        timeout-minutes: 15
+        run: |
+          # This runner has the OpenGL developer libraries; a user's computer
+          # may not. libOpenGL.so.0 (package libopengl0) and libGLX.so.0 are
+          # GLVND libraries that Qt never needs: if the program required them,
+          # it would not even open where they are missing (VisualTC 0.4.0 and
+          # 0.5.0 did).
+          if readelf -d build/${{ matrix.preset }}/bin/VisualTC | grep -E 'NEEDED.*(libOpenGL|libGLX)\.so'; then
+            echo "::error::O programa exige bibliotecas OpenGL que muitos computadores Linux não têm"
+            exit 1
+          fi
+          # A bare Ubuntu 22.04 gets only the Depends: line of the .deb; the
+          # AppImage then runs on those same base libraries.
+          docker run --rm -v "$PWD:/w" -w /w -e DEBIAN_FRONTEND=noninteractive -e QT_QPA_PLATFORM=offscreen \
+            ubuntu:22.04 bash -euxc '
+              apt-get update -qq
+              apt-get install -y -qq --no-install-recommends ./dist/visualtc_amd64.deb fonts-dejavu-core > /dev/null
+              ldconfig -p | grep -E "libOpenGL|libGLX" || true
+              visualtc --mpr --screenshot bare-deb.png phantom
+              visualtc --3d ct-bone --screenshot bare-deb3d.png phantom
+              APPIMAGE_EXTRACT_AND_RUN=1 ./dist/VisualTC-x86_64.AppImage --mpr --screenshot bare-appimage.png phantom
+              APPIMAGE_EXTRACT_AND_RUN=1 ./dist/VisualTC-x86_64.AppImage --3d ct-bone --screenshot bare-appimage3d.png phantom'
+          test -s bare-deb.png && test -s bare-deb3d.png && test -s bare-appimage.png && test -s bare-appimage3d.png
+
       # ------------------------------------------------------------ Windows
       - name: Package (installer)
         if: runner.os == 'Windows'

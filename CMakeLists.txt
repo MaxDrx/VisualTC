@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.21)
 
 project(VisualTC
-    VERSION 0.5.0
+    VERSION 0.5.1
     DESCRIPTION "VisualTC — DICOM Medical Image Viewer"
     LANGUAGES C CXX)
 
@@ -22,6 +22,14 @@ option(VISUALTC_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" OFF)
 option(VISUALTC_FETCH_CATCH2 "Download Catch2 if it is not installed" ON)
 
 include(CompilerSettings)
+
+# Linux: Qt links OpenGL through CMake's FindOpenGL. Its default (GLVND)
+# makes the program require libOpenGL.so.0, which many desktops do not have
+# (Ubuntu package libopengl0), so VisualTC would not even open there. The
+# classic libGL.so.1 is already required by Qt itself and present everywhere.
+if(UNIX AND NOT APPLE AND NOT DEFINED OpenGL_GL_PREFERENCE)
+    set(OpenGL_GL_PREFERENCE LEGACY)
+endif()
 
 find_package(Threads REQUIRED)
 find_package(GDCM 3.0 REQUIRED CONFIG)

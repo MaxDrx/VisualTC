@@ -21,7 +21,7 @@ no GitHub Pages — veja [docs/BUILD.md](docs/BUILD.md#publicar-uma-versão)).
 
 ![VisualTC — MPR com crosshair](docs/screenshots/mpr.png)
 
-> **Aviso:** esta versão (0.5.0) é destinada a **estudos e pesquisas** e não é um dispositivo médico registrado
+> **Aviso:** esta versão (0.5.1) é destinada a **estudos e pesquisas** e não é um dispositivo médico registrado
 > (ANVISA/FDA/CE). Medidas e reconstruções devem ser conferidas antes de
 > qualquer uso diagnóstico.
 

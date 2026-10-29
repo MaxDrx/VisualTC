@@ -1,6 +1,6 @@
-# Guia do usuário — VisualTC 0.5.0
+# Guia do usuário — VisualTC 0.5.1
 
-> O VisualTC 0.5.0 é destinado a **estudos e pesquisas** e não é um
+> O VisualTC 0.5.1 é destinado a **estudos e pesquisas** e não é um
 > dispositivo médico registrado. Confira medidas e reconstruções antes de
 > qualquer uso diagnóstico. Criado por Dr Marcelo Duarte — Brasil.
 

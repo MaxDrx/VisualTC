@@ -1,6 +1,6 @@
-# Estado do projeto — VisualTC 0.5.0
+# Estado do projeto — VisualTC 0.5.1
 
-Atualizado em 29/10/2026 (versão 0.5.0: **reconstrução 3D** com motor próprio, na placa de vídeo ou no processador; antes, 0.4.0: idiomas português/espanhol/inglês, cor de destaque, botão Plano, fechar um estudo, menu do MPR e botão Cruz corrigidos, layout 1×3; 0.3.0: MPR manipulado nas linhas, LUT colorida, linhas de referência e histograma corrigidos, 3D com VTK retirado). Convenção: um item só entra em **IMPLEMENTADO**
+Atualizado em 29/10/2026 (versão 0.5.1: no Linux o programa abre também sem a biblioteca `libopengl0`; 0.5.0: **reconstrução 3D** com motor próprio, na placa de vídeo ou no processador; antes, 0.4.0: idiomas português/espanhol/inglês, cor de destaque, botão Plano, fechar um estudo, menu do MPR e botão Cruz corrigidos, layout 1×3; 0.3.0: MPR manipulado nas linhas, LUT colorida, linhas de referência e histograma corrigidos, 3D com VTK retirado). Convenção: um item só entra em **IMPLEMENTADO**
 depois de compilado e testado (teste automatizado e/ou verificação visual
 por captura de tela). A numeração (§) segue as seções do prompt mestre.
 
@@ -214,7 +214,7 @@ por captura de tela). A numeração (§) segue as seções do prompt mestre.
   publicada com nomes fixos por tag `v*`; página de download (`site/`).
 
 ## EM DESENVOLVIMENTO
-- Nenhum item em andamento. Versão 0.5.0 aguardando o teste do usuário.
+- Nenhum item em andamento. Versão 0.5.1 aguardando o teste do usuário.
 
 ## FORA DO ESCOPO
 - VTK e outras bibliotecas pesadas de visualização: a reconstrução 3D da
