@@ -51,8 +51,11 @@ fetch_tool linuxdeploy-x86_64.AppImage \
   https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
 fetch_tool linuxdeploy-plugin-qt-x86_64.AppImage \
   https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage
+# appimagetool: a fixed release, so a new build of the tool cannot change
+# the package from one day to the next (its continuous build of 2026-10-29
+# started refusing AppDirs whose icon is only an SVG).
 fetch_tool appimagetool-x86_64.AppImage \
-  https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
+  https://github.com/AppImage/appimagetool/releases/download/1.9.1/appimagetool-x86_64.AppImage
 export PATH="$TOOLS_DIR:$PATH"
 
 WORK=$(mktemp -d)
@@ -80,6 +83,12 @@ linuxdeploy-x86_64.AppImage --appdir "$APPDIR" \
   --plugin qt
 
 echo "=== AppImage ==="
+# The icon of the AppImage (file managers, menus): a PNG at the top of the
+# AppDir and .DirIcon pointing to it (linuxdeploy links the SVG, which
+# appimagetool no longer accepts), and everything readable by any user.
+cp "$ROOT/packaging/linux/visualtc.png" "$APPDIR/visualtc.png"
+ln -sf visualtc.png "$APPDIR/.DirIcon"
+chmod -R a+rX "$APPDIR"
 ARCH=x86_64 VERSION="$VERSION" appimagetool-x86_64.AppImage --no-appstream "$APPDIR" \
   "$OUT_DIR/VisualTC-x86_64.AppImage"
 chmod +x "$OUT_DIR/VisualTC-x86_64.AppImage"

@@ -198,8 +198,8 @@ Cada sistema tem um script, o mesmo usado pelo CI.
 packaging/linux/make_packages.sh build/linux-release "$QT_ROOT_DIR/bin/qmake" dist
 ```
 
-O script baixa linuxdeploy, o plugin Qt e o appimagetool (ou usa os que
-estiverem em `TOOLS_DIR`), monta a árvore autocontida (Qt 6.8, GDCM e
+O script baixa linuxdeploy, o plugin Qt e o appimagetool — este fixado na
+versão 1.9.1 — (ou usa os que estiverem em `TOOLS_DIR`), monta a árvore autocontida (Qt 6.8, GDCM e
 libarchive embutidos) e gera:
 
 - `.deb`: instala em `/opt/visualtc`, com `/usr/bin/visualtc`, entrada de
